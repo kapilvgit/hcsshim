@@ -14,7 +14,10 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/Microsoft/hcsshim/internal/guest/spec"
+	"github.com/Microsoft/hcsshim/internal/guestpath"
 	"github.com/google/go-cmp/cmp"
+	oci "github.com/opencontainers/runtime-spec/specs-go"
 )
 
 const (
@@ -29,6 +32,12 @@ const (
 	maxGeneratedEnvironmentVariableRules      = 12
 	maxGeneratedMountTargetLength             = 256
 	rootHashLength                            = 64
+	maxGeneratedSandboxIDLength               = 32
+	maxGeneratedMounts                        = 4
+	maxGeneratedMountSourceLength             = 32
+	maxGeneratedMountDestinationLength        = 32
+	maxGeneratedMountOptions                  = 4
+	maxGeneratedMountOptionLength             = 32
 	// additional consts
 	// the standard enforcer tests don't do anything with the encoded policy
 	// string. this const exists to make that explicit
@@ -874,6 +883,7 @@ func generateContainersContainer(r *rand.Rand, minNumberOfLayers, maxNumberOfLay
 	c.Command = generateCommand(r)
 	c.EnvRules = generateEnvironmentVariableRules(r)
 	c.WorkingDir = randVariableString(r, maxGeneratedCommandLength)
+	c.Mounts = generateMounts(r)
 	numLayers := int(atLeastNAtMostM(r, minNumberOfLayers, maxNumberOfLayers))
 	for i := 0; i < numLayers; i++ {
 		c.Layers = append(c.Layers, generateRootHash(r))
@@ -988,6 +998,87 @@ func selectRootHashFromContainers(containers *generatedContainers, r *rand.Rand)
 func generateContainerID(r *rand.Rand) string {
 	id := atLeastOneAtMost(r, maxGeneratedContainerID)
 	return strconv.FormatInt(int64(id), 10)
+}
+
+func generateSandboxID(r *rand.Rand) string {
+	return randVariableString(r, maxGeneratedSandboxIDLength)
+}
+
+func generateMounts(r *rand.Rand) []mountInternal {
+	numberOfMounts := atLeastOneAtMost(r, maxGeneratedMounts)
+	mounts := make([]mountInternal, numberOfMounts)
+
+	for i := 0; i < int(numberOfMounts); i++ {
+		numberOfOptions := atLeastOneAtMost(r, maxGeneratedMountOptions)
+		options := make([]string, numberOfOptions)
+		for j := 0; j < int(numberOfOptions); j++ {
+			options[j] = randVariableString(r, maxGeneratedMountOptionLength)
+		}
+
+		var prefix string
+		if i%2 == 0 {
+			prefix = guestpath.SandboxMountPrefix
+		} else {
+			prefix = guestpath.HugePagesMountPrefix
+		}
+
+		mounts[i] = mountInternal{
+			Source:      prefix + randVariableString(r, maxGeneratedMountSourceLength),
+			Destination: randVariableString(r, maxGeneratedMountDestinationLength),
+			Options:     options,
+			Type:        "bind",
+		}
+	}
+
+	return mounts
+}
+
+func buildMountSpecFromContainerRules(c *securityPolicyContainer, sandboxID string, r *rand.Rand) *oci.Spec {
+	mountSpec := new(oci.Spec)
+
+	// Select some number of the valid, matching rules to be environment
+	// variable
+	sandboxDir := spec.SandboxMountsDir(sandboxID)
+	hugePagesDir := spec.HugePagesMountsDir(sandboxID)
+	numberOfMounts := int32(len(c.Mounts))
+	numberOfMatches := randMinMax(r, 1, numberOfMounts)
+	usedIndexes := map[int]struct{}{}
+	for numberOfMatches > 0 {
+		anIndex := -1
+		if (numberOfMatches * 2) > numberOfMounts {
+			// if we have a lot of matches, randomly select
+			exists := true
+
+			for exists {
+				anIndex = int(randMinMax(r, 0, numberOfMounts-1))
+				_, exists = usedIndexes[anIndex]
+			}
+		} else {
+			// we have a "smaller set of rules. we'll just iterate and select from
+			// available
+			exists := true
+
+			for exists {
+				anIndex++
+				_, exists = usedIndexes[anIndex]
+			}
+		}
+
+		mount := c.Mounts[anIndex]
+		source := strings.Replace(mount.Source, guestpath.SandboxMountPrefix, sandboxDir, 1)
+		source = strings.Replace(source, guestpath.HugePagesMountPrefix, hugePagesDir, 1)
+		mountSpec.Mounts = append(mountSpec.Mounts, oci.Mount{
+			Source:      source,
+			Destination: mount.Destination,
+			Options:     mount.Options,
+			Type:        mount.Type,
+		})
+		usedIndexes[anIndex] = struct{}{}
+
+		numberOfMatches--
+	}
+
+	return mountSpec
 }
 
 func selectContainerFromContainers(containers *generatedContainers, r *rand.Rand) *securityPolicyContainer {

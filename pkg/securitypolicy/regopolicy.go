@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Microsoft/hcsshim/internal/guest/spec"
+	"github.com/Microsoft/hcsshim/internal/guestpath"
 	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage/inmem"
@@ -296,7 +298,11 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 		return nil, fmt.Errorf("failed to convert json to rego: %w", err)
 	}
 
-	policy.data = make(map[string]interface{})
+	policy.data = map[string]interface{}{
+		"defaultMounts":   []interface{}{},
+		"sandboxPrefix":   guestpath.SandboxMountPrefix,
+		"hugePagesPrefix": guestpath.HugePagesMountPrefix,
+	}
 	policy.mutex = new(sync.Mutex)
 	policy.base64policy = ""
 
@@ -478,21 +484,92 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 func (policy *RegoPolicy) EnforceDeviceUnmountPolicy(unmountTarget string) error {
 	policy.mutex.Lock()
 	defer policy.mutex.Unlock()
+
 	devices := policy.data["devices"].(map[string]string)
 	delete(devices, unmountTarget)
+
 	return nil
 }
 
 func (policy *RegoPolicy) EnforceWaitMountPointsPolicy(containerID string, spec *oci.Spec) error {
-	return errors.New("not implemented)")
+	return errors.New("deprecated")
 }
 
-func (policy *RegoPolicy) EnforceMountPolicy(sandboxID, containerID string, spec *oci.Spec) error {
-	return errors.New("not implemented)")
+func (policy *RegoPolicy) EnforceMountPolicy(sandboxID, containerID string, mountSpec *oci.Spec) error {
+	policy.mutex.Lock()
+	defer policy.mutex.Unlock()
+
+	var containerInfo map[string]interface{}
+	if containers, found := policy.data["containers"]; found {
+		containerMap := containers.(map[string]interface{})
+		if container, found := containerMap[containerID]; found {
+			containerInfo = container.(map[string]interface{})
+		} else {
+			return fmt.Errorf("container %s does not have a filesystem", containerID)
+		}
+	} else {
+		return fmt.Errorf("container %s does not have a filesystem", containerID)
+	}
+
+	mounts := make([]map[string]interface{}, len(mountSpec.Mounts))
+	for i, mount := range mountSpec.Mounts {
+		mounts[i] = map[string]interface{}{
+			"source":      mount.Source,
+			"destination": mount.Destination,
+			"options":     mount.Options,
+			"type":        mount.Type,
+		}
+	}
+
+	input := map[string]interface{}{
+		"name":         "mount",
+		"sandboxDir":   spec.SandboxMountsDir(sandboxID),
+		"hugePagesDir": spec.HugePagesMountsDir(sandboxID),
+		"mounts":       mounts,
+	}
+
+	for key, value := range containerInfo {
+		input[key] = value
+	}
+
+	result, err := policy.Query(input)
+	if err != nil {
+		return err
+	}
+
+	if result.Allowed() {
+		containerInfo["mounts"] = mounts
+		return nil
+	} else {
+		input["name"] = "reason"
+		result, err := policy.Query(input)
+		if err != nil {
+			return err
+		}
+
+		reasons := []string{}
+		for _, reason := range result[0].Expressions[0].Value.([]interface{}) {
+			reasons = append(reasons, reason.(string))
+		}
+		return fmt.Errorf("mount not allowed by policy. Reasons: [%s]", strings.Join(reasons, ","))
+	}
 }
 
-func (policy *RegoPolicy) ExtendDefaultMounts([]oci.Mount) error {
-	return errors.New("not implemented)")
+func (policy *RegoPolicy) ExtendDefaultMounts(mounts []oci.Mount) error {
+	policy.mutex.Lock()
+	defer policy.mutex.Unlock()
+
+	defaultMounts := policy.data["defaultMounts"].([]interface{})
+	for _, mount := range mounts {
+		defaultMounts = append(defaultMounts, map[string]interface{}{
+			"destination": mount.Destination,
+			"source":      mount.Source,
+			"options":     mount.Options,
+			"type":        mount.Type,
+		})
+	}
+	policy.data["defaultMounts"] = defaultMounts
+	return nil
 }
 
 func (policy *RegoPolicy) EncodedSecurityPolicy() string {

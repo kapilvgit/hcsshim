@@ -72,3 +72,13 @@ create_container := true {
     count(data.policy.containers) == 0
 	data.policy.allow_all
 }
+
+default mount := false
+mount := true {
+    data.framework.mount(data.policy.containers)
+}
+
+mount := true {
+    count(data.policy.containers) == 0
+    data.policy.allow_all
+}

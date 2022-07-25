@@ -88,8 +88,7 @@ mountSource_ok(constraint, source) {
 	regex.match(newConstraint, source)
 }
 
-mount_ok(container, mount) {
-	some constraint in container.mounts
+mountConstraint_ok(constraint, mount) {
 	mount.type == constraint.type
 	mountSource_ok(constraint.source, mount.source)
 	mount.destination != ""
@@ -98,6 +97,16 @@ mount_ok(container, mount) {
 		some constraintOption in constraint.options
 		option == constraintOption
 	}
+}
+
+mount_ok(container, mount) {
+	some constraint in container.mounts
+    mountConstraint_ok(constraint, mount)
+}
+
+mount_ok(container, mount) {
+    some constraint in data.defaultMounts
+    mountConstraint_ok(constraint, mount)
 }
 
 mountList_ok(container) {

@@ -376,6 +376,33 @@ func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
 	}
 }
 
+func Test_Rego_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
+	p := generateContainers(testRand, 1)
+
+	container := generateContainersContainer(testRand, 1, 1)
+	// add a rule to re2 match
+	re2MatchRule := EnvRuleConfig{
+		Strategy: EnvVarRuleRegex,
+		Rule:     "PREFIX_.+=.+",
+	}
+	container.EnvRules = append(container.EnvRules, re2MatchRule)
+	p.containers = append(p.containers, container)
+
+	tc, err := setupRegoContainerTest(p)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	envList := append(tc.envList, "PREFIX_FOO=BAR")
+	err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, envList, tc.workingDir)
+
+	// getting an error means something is broken
+	if err != nil {
+		t.Fatalf("expected nil error got: %v", err)
+	}
+}
+
 func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 	testFunc := func(gc *generatedContainers) bool {
 		tc, err := setupRegoContainerTest(gc)
@@ -395,5 +422,69 @@ func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 
 	if err := quick.Check(testFunc, &quick.Config{MaxCount: 50}); err != nil {
 		t.Errorf("Test_Rego_WorkingDirectoryPolicy_NoMatches: %v", err)
+	}
+}
+
+type regoMountTestConfig struct {
+	sandboxID   string
+	containerID string
+	mountSpec   *oci.Spec
+	policy      *RegoPolicy
+}
+
+func setupRegoMountTest(gc *generatedContainers) (tc *regoMountTestConfig, err error) {
+	securityPolicy := securityPolicyFromInternal(gc)
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	if err != nil {
+		return nil, err
+	}
+
+	containerID := generateContainerID(testRand)
+	c := selectContainerFromContainers(gc, testRand)
+
+	layerPaths, err := createValidOverlayForContainer(policy, c, testRand)
+	if err != nil {
+		return nil, fmt.Errorf("error creating valid overlay: %w", err)
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	if err != nil {
+		return nil, fmt.Errorf("error mounting filesystem: %w", err)
+	}
+
+	envList := buildEnvironmentVariablesFromContainerRules(c, testRand)
+
+	err = policy.EnforceCreateContainerPolicy(containerID, c.Command, envList, c.WorkingDir)
+	if err != nil {
+		return nil, fmt.Errorf("error creating container: %w", err)
+	}
+
+	sandboxID := generateSandboxID(testRand)
+	mountSpec := buildMountSpecFromContainerRules(c, sandboxID, testRand)
+
+	return &regoMountTestConfig{
+		containerID: containerID,
+		sandboxID:   sandboxID,
+		mountSpec:   mountSpec,
+		policy:      policy,
+	}, nil
+}
+
+func Test_Rego_EnforceMountPolicy(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		// getting an error means something is broken
+		return err == nil
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy: %v", err)
 	}
 }
