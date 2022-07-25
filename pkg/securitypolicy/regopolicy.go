@@ -3,6 +3,7 @@ package securitypolicy
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,137 +11,36 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/pkg/errors"
-
+	"github.com/open-policy-agent/opa/ast"
 	"github.com/open-policy-agent/opa/rego"
 	"github.com/open-policy-agent/opa/storage/inmem"
 	"github.com/open-policy-agent/opa/topdown"
+	"github.com/pkg/errors"
+
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 )
 
-var MainCode string = `
-package main
+//go:embed framework.rego
+var FrameworkCode string
 
-import future.keywords.every
-import future.keywords.in
-
-default mount_device := false
-mount_device := true {
-    some container in data.policy.containers
-    some layer in container.layers
-    input.deviceHash == layer
-}
-
-mount_device := true {
-	data.policy.allow_all
-}
-
-default mount_overlay := false
-mount_overlay := true {
-    some container in data.policy.containers
-	length := count(container.layers)
-    count(input.layerPaths) == length
-    every i, path in input.layerPaths {
-        container.layers[length - i - 1] == data.devices[path]
-    }
-}
-
-mount_overlay := true {
-	data.policy.allow_all
-}
-
-command_ok(container) {
-    count(input.argList) == count(container.command)
-    every i, arg in input.argList {
-        container.command[i] == arg
-    }
-}
-
-default command_matches := false
-command_matches := true {
-	some container in data.policy.containers
-	command_ok(container)
-}
-
-reason["invalid command"] {
-	not command_matches
-}
-
-env_ok(pattern, "string", value) {
-    pattern == value
-}
-
-env_ok(pattern, "re2", value) {
-    regex.match(pattern, value)
-}
-
-envList_ok(container) {
-    every env in input.envList {
-        some rule in container.env_rules
-        env_ok(rule.pattern, rule.strategy, env)
-    }
-}
-
-default envList_matches := false
-envList_matches := true {
-	some container in data.policy.containers
-	envList_ok(container)
-}
-
-reason["invalid env list"] {
-	not envList_matches
-}
-
-workingDirectory_ok(container) {
-	input.workingDir == container.working_dir
-}
-
-default workingDirectory_matches := false
-workingDirectory_matches := true {
-	some container in data.policy.containers
-	workingDirectory_ok(container)
-}
-
-reason["invalid working directory"] {
-	not workingDirectory_matches
-}
-
-default container_started := false
-container_started := true {
-	input.containerID in data.started
-}
-
-reason["container already started"] {
-	container_started
-}
-
-default create_container := false
-create_container := true {
-    not container_started
-    some container in data.policy.containers
-    command_ok(container)
-    envList_ok(container)
-	workingDirectory_ok(container)
-}
-
-create_container := true {
-	data.policy.allow_all
-}
-`
+//go:embed policy.rego
+var PolicyCode string
 
 var Indent string = "    "
 
 type RegoPolicy struct {
 	// Rego which describes policy behavior (see above)
-	mainCode string
+	behavior string
 	// Rego which describes policy objects (containers, etc.)
-	policyCode string
+	objects string
 	// Mutex to prevent concurrent access to fields
 	mutex *sync.Mutex
 	// Rego data object, used to store policy state
 	data map[string]interface{}
 	// Base64 encoded (JSON) policy
 	base64policy string
+	// Compiled modules
+	compiledModules *ast.Compiler
 }
 
 func toOptions(values []string) Options {
@@ -207,7 +107,7 @@ func writeCommand(builder *strings.Builder, command CommandArgs, indent string) 
 }
 
 func (e EnvRuleConfig) MarshalRego() string {
-	return fmt.Sprintf("{\"pattern\": \"%s\", \"strategy\": \"%s\"}", e.Rule, e.Strategy)
+	return fmt.Sprintf("{\"pattern\": \"%s\", \"strategy\": \"%s\", \"required\": false}", e.Rule, e.Strategy)
 }
 
 func (e EnvRules) MarshalRego() (string, error) {
@@ -389,9 +289,9 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 	}
 
 	policy := new(RegoPolicy)
-	policy.mainCode = MainCode
+	policy.behavior = PolicyCode
 	if code, err := securityPolicy.MarshalRego(); err == nil {
-		policy.policyCode = code
+		policy.objects = code
 	} else {
 		return nil, fmt.Errorf("failed to convert json to rego: %w", err)
 	}
@@ -399,6 +299,19 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 	policy.data = make(map[string]interface{})
 	policy.mutex = new(sync.Mutex)
 	policy.base64policy = ""
+
+	modules := map[string]string{
+		"behavior.rego":  policy.behavior,
+		"objects.rego":   policy.objects,
+		"framework.rego": FrameworkCode,
+	}
+
+	if compiled, err := ast.CompileModules(modules); err == nil {
+		policy.compiledModules = compiled
+	} else {
+		return nil, fmt.Errorf("rego compilation failed: %w", err)
+	}
+
 	return policy, nil
 }
 
@@ -408,9 +321,8 @@ func (policy RegoPolicy) Query(input map[string]interface{}) (rego.ResultSet, er
 	var buf bytes.Buffer
 	rule := input["name"].(string)
 	query := rego.New(
-		rego.Query(fmt.Sprintf("data.main.%s", rule)),
-		rego.Module("main", policy.mainCode),
-		rego.Module("policy", policy.policyCode),
+		rego.Query(fmt.Sprintf("data.policy.%s", rule)),
+		rego.Compiler(policy.compiledModules),
 		rego.Input(input),
 		rego.Store(store),
 		rego.EnablePrintStatements(true),
@@ -419,7 +331,7 @@ func (policy RegoPolicy) Query(input map[string]interface{}) (rego.ResultSet, er
 	ctx := context.Background()
 	results, err := query.Eval(ctx)
 	if err != nil {
-		fmt.Println("Policy", policy.policyCode)
+		fmt.Println("Policy", policy.objects)
 		fmt.Println(err)
 		return results, err
 	}
@@ -483,13 +395,15 @@ func (policy *RegoPolicy) EnforceOverlayMountPolicy(containerID string, layerPat
 				return fmt.Errorf("container %s already mounted", containerID)
 			} else {
 				containerMap[containerID] = map[string]interface{}{
-					"layerPaths": layerPaths,
+					"containerID": containerID,
+					"layerPaths":  layerPaths,
 				}
 			}
 		} else {
 			policy.data["containers"] = map[string]interface{}{
 				containerID: map[string]interface{}{
-					"layerPaths": layerPaths,
+					"containerID": containerID,
+					"layerPaths":  layerPaths,
 				},
 			}
 		}
@@ -507,13 +421,29 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 	policy.mutex.Lock()
 	defer policy.mutex.Unlock()
 
-	input := map[string]interface{}{
-		"name":        "create_container",
-		"containerID": containerID,
-		"argList":     argList,
-		"envList":     envList,
-		"workingDir":  workingDir,
+	var containerInfo map[string]interface{}
+	if containers, found := policy.data["containers"]; found {
+		containerMap := containers.(map[string]interface{})
+		if container, found := containerMap[containerID]; found {
+			containerInfo = container.(map[string]interface{})
+		} else {
+			return fmt.Errorf("container %s does not have a filesystem", containerID)
+		}
+	} else {
+		return fmt.Errorf("container %s does not have a filesystem", containerID)
 	}
+
+	input := map[string]interface{}{
+		"name":       "create_container",
+		"argList":    argList,
+		"envList":    envList,
+		"workingDir": workingDir,
+	}
+
+	for key, value := range containerInfo {
+		input[key] = value
+	}
+
 	result, err := policy.Query(input)
 	if err != nil {
 		return err
@@ -526,6 +456,9 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 		} else {
 			policy.data["started"] = []string{containerID}
 		}
+		containerInfo["argList"] = argList
+		containerInfo["envList"] = envList
+		containerInfo["workingDir"] = workingDir
 		return nil
 	} else {
 		input["name"] = "reason"

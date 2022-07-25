@@ -214,6 +214,16 @@ func setupRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfi
 	containerID := generateContainerID(testRand)
 	c := selectContainerFromContainers(gc, testRand)
 
+	layerPaths, err := createValidOverlayForContainer(policy, c, testRand)
+	if err != nil {
+		return nil, fmt.Errorf("error creating valid overlay: %w", err)
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	if err != nil {
+		return nil, fmt.Errorf("error mounting filesystem: %w", err)
+	}
+
 	envList := buildEnvironmentVariablesFromContainerRules(c, testRand)
 
 	return &regoContainerTestConfig{
@@ -241,7 +251,7 @@ func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
 		return err != nil
 	}
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 10}); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
 		t.Errorf("Test_Rego_EnforceOverlayMountPolicy_No_Matches failed: %v", err)
 	}
 }
@@ -262,7 +272,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 		return err == nil
 	}
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 10}); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
 		t.Errorf("Test_Rego_EnforceOverlayMountPolicy_Matches: %v", err)
 	}
 }
