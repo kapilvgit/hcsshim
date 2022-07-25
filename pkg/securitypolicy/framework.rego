@@ -76,22 +76,22 @@ create_container(containers) {
 	workingDirectory_ok(container)
 }
 
-mountSource_ok(constraint, source, sandboxPrefix, hugePagesPrefix) {
-	startswith(constraint, sandboxPrefix)
-	newConstraint := replace(constraint, sandboxPrefix, input.sandboxDir)
+mountSource_ok(constraint, source) {
+	startswith(constraint, data.sandboxPrefix)
+	newConstraint := replace(constraint, data.sandboxPrefix, input.sandboxDir)
 	regex.match(newConstraint, source)
 }
 
-mountSource_ok(constraint, source, sandboxPrefix, hugePagesPrefix) {
-	startswith(constraint, hugePagesPrefix)
-	newConstraint := replace(constraint, hugePagesPrefix, input.hugePagesDir)
+mountSource_ok(constraint, source) {
+	startswith(constraint, data.hugePagesPrefix)
+	newConstraint := replace(constraint, data.hugePagesPrefix, input.hugePagesDir)
 	regex.match(newConstraint, source)
 }
 
-mount_ok(container, mount, sandboxPrefix, hugePagesPrefix) {
+mount_ok(container, mount) {
 	some constraint in container.mounts
 	mount.type == constraint.type
-	mountSource_ok(constraint.source, mount.source, sandboxPrefix, hugePagesPrefix)
+	mountSource_ok(constraint.source, mount.source)
 	mount.destination != ""
 	mount.destination == constraint.destination
 	every option in mount.options {
@@ -100,17 +100,17 @@ mount_ok(container, mount, sandboxPrefix, hugePagesPrefix) {
 	}
 }
 
-mountList_ok(container, sandboxPrefix, hugePagesPrefix) {
+mountList_ok(container) {
     every mount in input.mounts {
-        mount_ok(container, mount, sandboxPrefix, hugePagesPrefix)
+        mount_ok(container, mount)
     }
 }
 
-mount(containers, sandboxPrefix, hugePagesPrefix) {
+mount(containers) {
     some container in containers
 	layerPaths_ok(container)
     command_ok(container)
     envList_ok(container)
 	workingDirectory_ok(container)
-	mountList_ok(container, sandboxPrefix, hugePagesPrefix)
+	mountList_ok(container)
 }
