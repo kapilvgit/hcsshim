@@ -89,6 +89,19 @@ func securityPolicyFromInternal(p *generatedContainers) *SecurityPolicy {
 	return securityPolicy
 }
 
+func toOCIMounts(mounts []mountInternal) []oci.Mount {
+	result := make([]oci.Mount, len(mounts))
+	for i, mount := range mounts {
+		result[i] = oci.Mount{
+			Source:      mount.Source,
+			Destination: mount.Destination,
+			Options:     mount.Options,
+			Type:        mount.Type,
+		}
+	}
+	return result
+}
+
 func Test_MarshalRego(t *testing.T) {
 	f := func(p *generatedContainers) bool {
 		base64policy, err := securityPolicyFromInternal(p).EncodeToString()
@@ -97,7 +110,10 @@ func Test_MarshalRego(t *testing.T) {
 			t.Errorf("unable to encode policy to base64: %v", err)
 		}
 
-		_, err = NewRegoPolicyFromBase64Json(base64policy, []oci.Mount{}, []oci.Mount{})
+		defaultMounts := toOCIMounts(generateMounts(testRand))
+		privilegedMounts := toOCIMounts(generateMounts(testRand))
+
+		_, err = NewRegoPolicyFromBase64Json(base64policy, defaultMounts, privilegedMounts)
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
 		}
@@ -110,7 +126,7 @@ func Test_MarshalRego(t *testing.T) {
 	}
 }
 
-// Verify that StandardSecurityPolicyEnforcer.EnforceDeviceMountPolicy doesn't
+// Verify that RegoSecurityPolicyEnforcer.EnforceDeviceMountPolicy doesn't
 // return an error when there's a matching root hash in the policy
 func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
@@ -135,7 +151,7 @@ func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
 	}
 }
 
-// Verify that StandardSecurityPolicyEnforcer.EnforceDeviceMountPolicy will
+// Verify that RegoSecurityPolicyEnforcer.EnforceDeviceMountPolicy will
 // return an error when there's no matching root hash in the policy
 func Test_Rego_EnforceDeviceMountPolicy_No_Matches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
@@ -235,7 +251,7 @@ func setupRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfi
 	}, nil
 }
 
-// Verify that StandardSecurityPolicyEnforcer.EnforceOverlayMountPolicy will
+// Verify that RegoSecurityPolicyEnforcer.EnforceOverlayMountPolicy will
 // return an error when there's no matching overlay targets.
 func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
@@ -256,7 +272,7 @@ func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
 	}
 }
 
-// Verify that StandardSecurityPolicyEnforcer.EnforceOverlayMountPolicy doesn't
+// Verify that RegoSecurityPolicyEnforcer.EnforceOverlayMountPolicy doesn't
 // return an error when there's a valid overlay target.
 func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
@@ -500,16 +516,7 @@ func Test_Rego_ExtendDefaultMounts(t *testing.T) {
 		}
 
 		defaultMounts := generateMounts(testRand)
-		mountsToAdd := make([]oci.Mount, len(defaultMounts))
-		for i, mount := range defaultMounts {
-			mountsToAdd[i] = oci.Mount{
-				Source:      mount.Source,
-				Destination: mount.Destination,
-				Options:     mount.Options,
-				Type:        mount.Type,
-			}
-		}
-		tc.policy.ExtendDefaultMounts(mountsToAdd)
+		tc.policy.ExtendDefaultMounts(toOCIMounts(defaultMounts))
 
 		additionalMounts := buildMountSpecFromMountArray(defaultMounts, tc.sandboxID, testRand)
 		tc.mountSpec.Mounts = append(tc.mountSpec.Mounts, additionalMounts.Mounts...)

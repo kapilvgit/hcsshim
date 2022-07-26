@@ -491,10 +491,6 @@ func (policy *RegoPolicy) EnforceDeviceUnmountPolicy(unmountTarget string) error
 	return nil
 }
 
-func (policy *RegoPolicy) EnforceWaitMountPointsPolicy(containerID string, spec *oci.Spec) error {
-	return errors.New("deprecated")
-}
-
 func (policy *RegoPolicy) EnforceMountPolicy(sandboxID, containerID string, mountSpec *oci.Spec) error {
 	policy.mutex.Lock()
 	defer policy.mutex.Unlock()

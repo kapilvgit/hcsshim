@@ -86,20 +86,6 @@ func (h *Host) SetSecurityPolicy(base64Policy string) error {
 		return errors.New("security policy has already been set")
 	}
 
-	// construct security policy state
-	securityPolicyState, err := securitypolicy.NewSecurityPolicyState(base64Policy)
-	if err != nil {
-		return err
-	}
-
-	p, err := securitypolicy.NewSecurityPolicyEnforcer(
-		*securityPolicyState,
-		securitypolicy.WithPrivilegedMounts(policy.DefaultCRIPrivilegedMounts()),
-	)
-	if err != nil {
-		return err
-	}
-
 	hostData, err := securitypolicy.NewSecurityPolicyDigest(base64Policy)
 	if err != nil {
 		return err
@@ -109,11 +95,13 @@ func (h *Host) SetSecurityPolicy(base64Policy string) error {
 		return err
 	}
 
-	if err := p.ExtendDefaultMounts(policy.DefaultCRIMounts()); err != nil {
+	// create policy enforcer
+	enforcer, err := securitypolicy.NewRegoPolicyFromBase64Json(base64Policy, policy.DefaultCRIMounts(), policy.DefaultCRIPrivilegedMounts())
+	if err != nil {
 		return err
 	}
 
-	h.securityPolicyEnforcer = p
+	h.securityPolicyEnforcer = enforcer
 	h.securityPolicyEnforcerSet = true
 
 	return nil
@@ -301,11 +289,6 @@ func (h *Host) CreateContainer(ctx context.Context, id string, settings *prot.VM
 	if oci.ParseAnnotationsBool(ctx, settings.OCISpecification.Annotations, annotations.SecurityPolicyEnv, false) {
 		secPolicyEnv := fmt.Sprintf("SECURITY_POLICY=%s", h.securityPolicyEnforcer.EncodedSecurityPolicy())
 		settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, secPolicyEnv)
-	}
-
-	// Sandbox mount paths need to be resolved in the spec before expected mounts policy can be enforced.
-	if err = h.securityPolicyEnforcer.EnforceWaitMountPointsPolicy(id, settings.OCISpecification); err != nil {
-		return nil, errors.Wrapf(err, "container creation denied due to policy")
 	}
 
 	// Create the BundlePath
