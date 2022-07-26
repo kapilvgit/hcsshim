@@ -1033,14 +1033,14 @@ func generateMounts(r *rand.Rand) []mountInternal {
 	return mounts
 }
 
-func buildMountSpecFromContainerRules(c *securityPolicyContainer, sandboxID string, r *rand.Rand) *oci.Spec {
+func buildMountSpecFromMountArray(mounts []mountInternal, sandboxID string, r *rand.Rand) *oci.Spec {
 	mountSpec := new(oci.Spec)
 
 	// Select some number of the valid, matching rules to be environment
 	// variable
 	sandboxDir := spec.SandboxMountsDir(sandboxID)
 	hugePagesDir := spec.HugePagesMountsDir(sandboxID)
-	numberOfMounts := int32(len(c.Mounts))
+	numberOfMounts := int32(len(mounts))
 	numberOfMatches := randMinMax(r, 1, numberOfMounts)
 	usedIndexes := map[int]struct{}{}
 	for numberOfMatches > 0 {
@@ -1064,7 +1064,7 @@ func buildMountSpecFromContainerRules(c *securityPolicyContainer, sandboxID stri
 			}
 		}
 
-		mount := c.Mounts[anIndex]
+		mount := mounts[anIndex]
 		source := strings.Replace(mount.Source, guestpath.SandboxMountPrefix, sandboxDir, 1)
 		source = strings.Replace(source, guestpath.HugePagesMountPrefix, hugePagesDir, 1)
 		mountSpec.Mounts = append(mountSpec.Mounts, oci.Mount{

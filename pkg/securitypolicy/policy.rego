@@ -23,6 +23,38 @@ mount_overlay := true {
 	data.policy.allow_all
 }
 
+default container_started := false
+container_started := true {
+	input.containerID in data.started
+}
+
+default create_container := false
+create_container := true {
+    not container_started
+    data.framework.create_container(data.policy.containers)
+}
+
+create_container := true {
+    count(data.policy.containers) == 0
+	data.policy.allow_all
+}
+
+default mount := false
+mount := true {
+    data.framework.mount(data.policy.containers)
+}
+
+mount := true {
+    count(data.policy.containers) == 0
+    data.policy.allow_all
+}
+
+# error messages
+
+reason["container already started"] {
+	container_started
+}
+
 default command_matches := false
 command_matches := true {
 	some container in data.policy.containers
@@ -53,32 +85,12 @@ reason["invalid working directory"] {
 	not workingDirectory_matches
 }
 
-default container_started := false
-container_started := true {
-	input.containerID in data.started
+default mountList_matches := false
+mountList_matches := true {
+	some container in data.policy.containers
+	data.framework.mountList_ok(container)
 }
 
-reason["container already started"] {
-	container_started
-}
-
-default create_container := false
-create_container := true {
-    not container_started
-    data.framework.create_container(data.policy.containers)
-}
-
-create_container := true {
-    count(data.policy.containers) == 0
-	data.policy.allow_all
-}
-
-default mount := false
-mount := true {
-    data.framework.mount(data.policy.containers)
-}
-
-mount := true {
-    count(data.policy.containers) == 0
-    data.policy.allow_all
+reason["invalid mount list"] {
+	not mountList_matches
 }

@@ -428,6 +428,7 @@ func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 type regoMountTestConfig struct {
 	sandboxID   string
 	containerID string
+	container   *securityPolicyContainer
 	mountSpec   *oci.Spec
 	policy      *RegoPolicy
 }
@@ -460,9 +461,10 @@ func setupRegoMountTest(gc *generatedContainers) (tc *regoMountTestConfig, err e
 	}
 
 	sandboxID := generateSandboxID(testRand)
-	mountSpec := buildMountSpecFromContainerRules(c, sandboxID, testRand)
+	mountSpec := buildMountSpecFromMountArray(c.Mounts, sandboxID, testRand)
 
 	return &regoMountTestConfig{
+		container:   c,
 		containerID: containerID,
 		sandboxID:   sandboxID,
 		mountSpec:   mountSpec,
@@ -486,5 +488,171 @@ func Test_Rego_EnforceMountPolicy(t *testing.T) {
 
 	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
 		t.Errorf("Test_Rego_EnforceMountPolicy: %v", err)
+	}
+}
+
+func Test_Rego_ExtendDefaultMounts(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		defaultMounts := generateMounts(testRand)
+		mountsToAdd := make([]oci.Mount, len(defaultMounts))
+		for i, mount := range defaultMounts {
+			mountsToAdd[i] = oci.Mount{
+				Source:      mount.Source,
+				Destination: mount.Destination,
+				Options:     mount.Options,
+				Type:        mount.Type,
+			}
+		}
+		tc.policy.ExtendDefaultMounts(mountsToAdd)
+
+		additionalMounts := buildMountSpecFromMountArray(defaultMounts, tc.sandboxID, testRand)
+		tc.mountSpec.Mounts = append(tc.mountSpec.Mounts, additionalMounts.Mounts...)
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		return err == nil
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExtendDefaultMounts: %v", err)
+	}
+}
+
+func Test_Rego_EnforceMountPolicy_NoMatches(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		invalidMounts := generateMounts(testRand)
+		additionalMounts := buildMountSpecFromMountArray(invalidMounts, tc.sandboxID, testRand)
+		tc.mountSpec.Mounts = append(tc.mountSpec.Mounts, additionalMounts.Mounts...)
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid mount list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy_NoMatches: %v", err)
+	}
+}
+
+func Test_Rego_EnforceMountPolicy_BadSource(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		index := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
+		tc.mountSpec.Mounts[index].Source = randString(testRand, maxGeneratedMountSourceLength)
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid mount list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy_BadSource: %v", err)
+	}
+}
+
+func Test_Rego_EnforceMountPolicy_BadDestination(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		index := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
+		tc.mountSpec.Mounts[index].Destination = randString(testRand, maxGeneratedMountDestinationLength)
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid mount list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy_BadDestination: %v", err)
+	}
+}
+
+func Test_Rego_EnforceMountPolicy_BadType(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		index := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
+		tc.mountSpec.Mounts[index].Type = randString(testRand, 4)
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid mount list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy_BadType: %v", err)
+	}
+}
+
+func Test_Rego_EnforceMountPolicy_BadOption(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		index := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
+		mount := tc.mountSpec.Mounts[index]
+		index = randMinMax(testRand, 0, int32(len(mount.Options)-1))
+		mount.Options[index] = randString(testRand, maxGeneratedMountOptionLength)
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid mount list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy_BadOption: %v", err)
 	}
 }
