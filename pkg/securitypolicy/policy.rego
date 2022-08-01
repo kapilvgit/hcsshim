@@ -52,6 +52,7 @@ mount := true {
 # error messages
 
 reason["container already started"] {
+	input.name == "create_container"
 	container_started
 }
 
