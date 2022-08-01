@@ -3,11 +3,7 @@ package framework
 import future.keywords.every
 import future.keywords.in
 
-svn := {
-	"major": 0,
-	"minor": 1,
-	"patch": 0,
-}
+svn := "0.1.0"
 
 mount_device(containers) {
     some container in containers
@@ -16,7 +12,7 @@ mount_device(containers) {
 }
 
 layerPaths_ok(container) {
-	length := count(container.layers)
+    length := count(container.layers)
     count(input.layerPaths) == length
     every i, path in input.layerPaths {
         container.layers[length - i - 1] == data.devices[path]
@@ -25,7 +21,7 @@ layerPaths_ok(container) {
 
 mount_overlay(containers) {
     some container in containers
-	layerPaths_ok(container)
+    layerPaths_ok(container)
 }
 
 
@@ -65,42 +61,42 @@ envList_ok(container) {
 }
 
 workingDirectory_ok(container) {
-	input.workingDir == container.working_dir
+    input.workingDir == container.working_dir
 }
 
 create_container(containers) {
     some container in containers
-	layerPaths_ok(container)
+    layerPaths_ok(container)
     command_ok(container)
     envList_ok(container)
-	workingDirectory_ok(container)
+    workingDirectory_ok(container)
 }
 
 mountSource_ok(constraint, source) {
-	startswith(constraint, data.sandboxPrefix)
-	newConstraint := replace(constraint, data.sandboxPrefix, input.sandboxDir)
-	regex.match(newConstraint, source)
+    startswith(constraint, data.sandboxPrefix)
+    newConstraint := replace(constraint, data.sandboxPrefix, input.sandboxDir)
+    regex.match(newConstraint, source)
 }
 
 mountSource_ok(constraint, source) {
-	startswith(constraint, data.hugePagesPrefix)
-	newConstraint := replace(constraint, data.hugePagesPrefix, input.hugePagesDir)
-	regex.match(newConstraint, source)
+    startswith(constraint, data.hugePagesPrefix)
+    newConstraint := replace(constraint, data.hugePagesPrefix, input.hugePagesDir)
+    regex.match(newConstraint, source)
 }
 
 mountConstraint_ok(constraint, mount) {
-	mount.type == constraint.type
-	mountSource_ok(constraint.source, mount.source)
-	mount.destination != ""
-	mount.destination == constraint.destination
-	every option in mount.options {
-		some constraintOption in constraint.options
-		option == constraintOption
-	}
+    mount.type == constraint.type
+    mountSource_ok(constraint.source, mount.source)
+    mount.destination != ""
+    mount.destination == constraint.destination
+    every option in mount.options {
+        some constraintOption in constraint.options
+        option == constraintOption
+    }
 }
 
 mount_ok(container, mount) {
-	some constraint in container.mounts
+    some constraint in container.mounts
     mountConstraint_ok(constraint, mount)
 }
 
@@ -117,9 +113,9 @@ mountList_ok(container) {
 
 mount(containers) {
     some container in containers
-	layerPaths_ok(container)
+    layerPaths_ok(container)
     command_ok(container)
     envList_ok(container)
-	workingDirectory_ok(container)
-	mountList_ok(container)
+    workingDirectory_ok(container)
+    mountList_ok(container)
 }
