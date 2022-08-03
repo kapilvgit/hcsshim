@@ -5,7 +5,7 @@ import future.keywords.in
 
 default mount_device := false
 mount_device := true {
-    data.framework.mount_device(data.policy.containers)
+    data.framework.mount_device
 }
 
 mount_device := true {
@@ -15,7 +15,7 @@ mount_device := true {
 
 default mount_overlay := false
 mount_overlay := true {
-    data.framework.mount_overlay(data.policy.containers)
+    data.framework.mount_overlay
 }
 
 mount_overlay := true {
@@ -30,9 +30,9 @@ container_started := true {
 
 default create_container := false
 create_container := true {
-    not container_started
-    data.framework.create_container(data.policy.containers)
+    data.framework.create_container
 }
+
 
 create_container := true {
     count(data.policy.containers) == 0
@@ -41,7 +41,7 @@ create_container := true {
 
 default mount := false
 mount := true {
-    data.framework.mount(data.policy.containers)
+    data.framework.mount
 }
 
 mount := true {
@@ -52,7 +52,7 @@ mount := true {
 # error messages
 
 reason["container already started"] {
-	input.name == "create_container"
+	input.rule == "create_container"
 	container_started
 }
 
@@ -93,5 +93,6 @@ mountList_matches := true {
 }
 
 reason["invalid mount list"] {
+	input.rule == "mount"
 	not mountList_matches
 }

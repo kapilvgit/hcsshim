@@ -299,6 +299,7 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 	}
 
 	policy.data = map[string]interface{}{
+		"started":         []string{},
 		"defaultMounts":   []interface{}{},
 		"sandboxPrefix":   guestpath.SandboxMountPrefix,
 		"hugePagesPrefix": guestpath.HugePagesMountPrefix,
@@ -456,18 +457,15 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 	}
 
 	if result.Allowed() {
-		if started, found := policy.data["started"]; found {
-			startedArray := started.([]string)
-			policy.data["started"] = append(startedArray, containerID)
-		} else {
-			policy.data["started"] = []string{containerID}
-		}
+		started := policy.data["started"].([]string)
+		policy.data["started"] = append(started, containerID)
 		containerInfo["argList"] = argList
 		containerInfo["envList"] = envList
 		containerInfo["workingDir"] = workingDir
 		return nil
 	} else {
 		input["name"] = "reason"
+		input["rule"] = "create_container"
 		result, err := policy.Query(input)
 		if err != nil {
 			return err
@@ -538,6 +536,7 @@ func (policy *RegoPolicy) EnforceMountPolicy(sandboxID, containerID string, moun
 		return nil
 	} else {
 		input["name"] = "reason"
+		input["rule"] = "mount"
 		result, err := policy.Query(input)
 		if err != nil {
 			return err

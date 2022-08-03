@@ -5,8 +5,9 @@ import future.keywords.in
 
 svn := "0.1.0"
 
-mount_device(containers) {
-    some container in containers
+default mount_device := false
+mount_device := true {
+    some container in data.policy.containers
     some layer in container.layers
     input.deviceHash == layer
 }
@@ -19,8 +20,9 @@ layerPaths_ok(container) {
     }
 }
 
-mount_overlay(containers) {
-    some container in containers
+default mount_overlay := false
+mount_overlay := true {
+    some container in data.policy.containers
     layerPaths_ok(container)
 }
 
@@ -64,8 +66,10 @@ workingDirectory_ok(container) {
     input.workingDir == container.working_dir
 }
 
-create_container(containers) {
-    some container in containers
+default create_container := false
+create_container := true {
+	not input.containerID in data.started
+    some container in data.policy.containers
     layerPaths_ok(container)
     command_ok(container)
     envList_ok(container)
@@ -111,8 +115,9 @@ mountList_ok(container) {
     }
 }
 
-mount(containers) {
-    some container in containers
+default mount := false
+mount := true {
+    some container in data.policy.containers
     layerPaths_ok(container)
     command_ok(container)
     envList_ok(container)
