@@ -451,7 +451,11 @@ type regoMountTestConfig struct {
 
 func setupRegoMountTest(gc *generatedContainers) (tc *regoMountTestConfig, err error) {
 	securityPolicy := securityPolicyFromInternal(gc)
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	defaultMounts := generateMounts(testRand)
+	privilegedMounts := generateMounts(testRand)
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+		toOCIMounts(defaultMounts),
+		toOCIMounts(privilegedMounts))
 	if err != nil {
 		return nil, err
 	}
@@ -478,6 +482,12 @@ func setupRegoMountTest(gc *generatedContainers) (tc *regoMountTestConfig, err e
 
 	sandboxID := generateSandboxID(testRand)
 	mountSpec := buildMountSpecFromMountArray(c.Mounts, sandboxID, testRand)
+	defaultMountSpec := buildMountSpecFromMountArray(defaultMounts, sandboxID, testRand)
+	privilegedMountSpec := buildMountSpecFromMountArray(privilegedMounts, sandboxID, testRand)
+	mountSpec.Mounts = append(mountSpec.Mounts, defaultMountSpec.Mounts...)
+	if c.AllowElevated {
+		mountSpec.Mounts = append(mountSpec.Mounts, privilegedMountSpec.Mounts...)
+	}
 
 	return &regoMountTestConfig{
 		container:   c,

@@ -60,7 +60,7 @@ func toOptions(values []string) Options {
 }
 
 func (mounts *Mounts) Append(other []oci.Mount) {
-	start := mounts.Length + 1
+	start := mounts.Length
 	for i, mount := range other {
 		mounts.Elements[fmt.Sprint(i+start)] = Mount{
 			Source:      mount.Source,
@@ -74,12 +74,13 @@ func (mounts *Mounts) Append(other []oci.Mount) {
 }
 
 func injectMounts(policy *SecurityPolicy, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) error {
-	for _, container := range policy.Containers.Elements {
+	for name, container := range policy.Containers.Elements {
 		if container.AllowElevated {
 			container.Mounts.Append(privilegedMounts)
 		}
 
 		container.Mounts.Append(defaultMounts)
+		policy.Containers.Elements[name] = container
 	}
 
 	return nil
