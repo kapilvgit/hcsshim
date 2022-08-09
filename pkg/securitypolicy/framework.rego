@@ -26,7 +26,6 @@ mount_overlay := true {
     layerPaths_ok(container)
 }
 
-
 command_ok(container) {
     count(input.argList) == count(container.command)
     every i, arg in input.argList {
