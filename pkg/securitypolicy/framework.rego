@@ -100,6 +100,10 @@ mountConstraint_ok(constraint, mount) {
         some constraintOption in constraint.options
         option == constraintOption
     }
+    every option in constraint.options {
+        some mountOption in mount.options
+        option == mountOption
+    }
 }
 
 mount_ok(container, mount) {

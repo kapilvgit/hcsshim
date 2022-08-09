@@ -567,3 +567,31 @@ func Test_Rego_EnforceMountPolicy_NoMatches(t *testing.T) {
 		t.Errorf("Test_Rego_EnforceMountPolicy_NoMatches: %v", err)
 	}
 }
+
+func Test_Rego_EnforceMountPolicy_NotAllOptionsFromConstraints(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoMountTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		input_mounts := tc.mountSpec
+		mindex := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
+		options := input_mounts.Mounts[mindex].Options
+		input_mounts.Mounts[mindex].Options = options[:len(options)-1]
+
+		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, input_mounts)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid mount list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_EnforceMountPolicy_NotAllOptionsFromConstraints: %v", err)
+	}
+}
