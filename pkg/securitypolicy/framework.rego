@@ -88,6 +88,10 @@ mountSource_ok(constraint, source) {
     regex.match(newConstraint, source)
 }
 
+mountSource_ok(constraint, source) {
+    constraint == source
+}
+
 mountConstraint_ok(constraint, mount) {
     mount.type == constraint.type
     mountSource_ok(constraint.source, mount.source)

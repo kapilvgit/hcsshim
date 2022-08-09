@@ -1015,16 +1015,24 @@ func generateMounts(r *rand.Rand) []mountInternal {
 			options[j] = randVariableString(r, maxGeneratedMountOptionLength)
 		}
 
-		var prefix string
-		if i%2 == 0 {
-			prefix = guestpath.SandboxMountPrefix
-		} else {
-			prefix = guestpath.HugePagesMountPrefix
+		source_prefix := ""
+		// select a "source type". our default is "no special prefix" ie a
+		// "standard source".
+		prefix_type := randMinMax(r, 1, 3)
+		if prefix_type == 2 {
+			// sandbox mount, gets special handling
+			source_prefix = guestpath.SandboxMountPrefix
+		} else if prefix_type == 3 {
+			// huge page mount, gets special handling
+			source_prefix = guestpath.HugePagesMountPrefix
 		}
 
+		source := source_prefix + randVariableString(r, maxGeneratedMountSourceLength)
+		destination := randVariableString(r, maxGeneratedMountDestinationLength)
+
 		mounts[i] = mountInternal{
-			Source:      prefix + randVariableString(r, maxGeneratedMountSourceLength),
-			Destination: randVariableString(r, maxGeneratedMountDestinationLength),
+			Source:      source,
+			Destination: destination,
 			Options:     options,
 			Type:        "bind",
 		}
