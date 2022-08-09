@@ -73,6 +73,7 @@ func (mounts *Mounts) Append(other []oci.Mount) {
 	mounts.Length += len(other)
 }
 
+// TODO STA: delete
 func injectMounts(policy *SecurityPolicy, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) error {
 	for name, container := range policy.Containers.Elements {
 		if container.AllowElevated {
@@ -290,10 +291,6 @@ func NewRegoPolicyFromBase64Json(base64policy string, defaultMounts []oci.Mount,
 }
 
 func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) (*RegoPolicy, error) {
-	if err := injectMounts(securityPolicy, defaultMounts, privilegedMounts); err != nil {
-		return nil, err
-	}
-
 	policy := new(RegoPolicy)
 	policy.behavior = PolicyCode
 	if code, err := securityPolicy.MarshalRego(); err == nil {
@@ -316,6 +313,9 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 		"objects.rego":   policy.objects,
 		"framework.rego": FrameworkCode,
 	}
+
+	policy.ExtendDefaultMounts(defaultMounts)
+	policy.ExtendDefaultMounts(privilegedMounts)
 
 	if compiled, err := ast.CompileModules(modules); err == nil {
 		policy.compiledModules = compiled
