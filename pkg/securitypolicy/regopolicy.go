@@ -73,20 +73,6 @@ func (mounts *Mounts) Append(other []oci.Mount) {
 	mounts.Length += len(other)
 }
 
-// TODO STA: delete
-func injectMounts(policy *SecurityPolicy, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) error {
-	for name, container := range policy.Containers.Elements {
-		if container.AllowElevated {
-			container.Mounts.Append(privilegedMounts)
-		}
-
-		container.Mounts.Append(defaultMounts)
-		policy.Containers.Elements[name] = container
-	}
-
-	return nil
-}
-
 func (array StringArrayMap) MarshalRego() (string, error) {
 	values := make([]string, array.Length)
 	for i := 0; i < array.Length; i++ {
