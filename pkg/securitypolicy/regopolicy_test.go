@@ -450,13 +450,9 @@ type regoMountTestConfig struct {
 }
 
 func setupRegoMountTest(gc *generatedContainers) (tc *regoMountTestConfig, err error) {
-	fmt.Printf("setting up rego test\n")
 	securityPolicy := securityPolicyFromInternal(gc)
-	fmt.Printf("default mounts\n")
 	defaultMounts := generateMounts(testRand)
-	fmt.Printf("privileged mounts\n")
 	privilegedMounts := generateMounts(testRand)
-	fmt.Printf("done with intial mounts mounts\n")
 
 	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
 		toOCIMounts(defaultMounts),
@@ -486,21 +482,15 @@ func setupRegoMountTest(gc *generatedContainers) (tc *regoMountTestConfig, err e
 	}
 
 	sandboxID := generateSandboxID(testRand)
+
 	mountSpec := buildMountSpecFromMountArray(c.Mounts, sandboxID, testRand)
-	fmt.Printf("%d is length of mountSpec at 1\n", len(mountSpec.Mounts))
 	defaultMountSpec := buildMountSpecFromMountArray(defaultMounts, sandboxID, testRand)
-	fmt.Printf("%d is length of defaultMountSpec at 1\n", len(defaultMountSpec.Mounts))
+	mountSpec.Mounts = append(mountSpec.Mounts, defaultMountSpec.Mounts...)
 
 	privilegedMountSpec := buildMountSpecFromMountArray(privilegedMounts, sandboxID, testRand)
-	fmt.Printf("%d is length of privilegedMountSpec at 1\n", len(privilegedMountSpec.Mounts))
-
-	mountSpec.Mounts = append(mountSpec.Mounts, defaultMountSpec.Mounts...)
 	if c.AllowElevated {
-		fmt.Printf("doing privileged\n")
 		mountSpec.Mounts = append(mountSpec.Mounts, privilegedMountSpec.Mounts...)
 	}
-
-	fmt.Printf("%d is length of mountSpec at 2\n", len(mountSpec.Mounts))
 
 	return &regoMountTestConfig{
 		container:   c,
@@ -695,16 +685,10 @@ func Test_Rego_EnforceMountPolicy_BadOption(t *testing.T) {
 			return false
 		}
 
-		mindex := 0
-		//mindex := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
-
-		for i, mount := range tc.mountSpec.Mounts {
-			fmt.Printf("size of options for %d is %d\n", i, len(mount.Options))
-		}
-
-		tc.mountSpec.Mounts[mindex].Options[0] = randString(testRand, maxGeneratedMountOptionLength)
-
-		//append(tc.mountSpec.Mounts[mindex].Options, randString(testRand, maxGeneratedMountOptionLength))
+		index := randMinMax(testRand, 0, int32(len(tc.mountSpec.Mounts)-1))
+		mount_to_change := tc.mountSpec.Mounts[index]
+		index = randMinMax(testRand, 0, int32(len(mount_to_change.Options)-1))
+		mount_to_change.Options[index] = randString(testRand, maxGeneratedMountOptionLength)
 
 		err = tc.policy.EnforceMountPolicy(tc.sandboxID, tc.containerID, tc.mountSpec)
 
