@@ -112,7 +112,7 @@ mount_ok(container, mount) {
 }
 
 mount_ok(container, mount) {
-    some constraint in data.policy.defaultMounts
+    some constraint in data.defaultMounts
     mountConstraint_ok(constraint, mount)
 }
 
