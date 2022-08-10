@@ -36,7 +36,7 @@ const (
 	maxGeneratedMounts                        = 4
 	maxGeneratedMountSourceLength             = 32
 	maxGeneratedMountDestinationLength        = 32
-	maxGeneratedMountOptions                  = 4
+	maxGeneratedMountOptions                  = 5
 	maxGeneratedMountOptionLength             = 32
 	// additional consts
 	// the standard enforcer tests don't do anything with the encoded policy
@@ -1008,9 +1008,12 @@ func generateMounts(r *rand.Rand) []mountInternal {
 	numberOfMounts := atLeastOneAtMost(r, maxGeneratedMounts)
 	mounts := make([]mountInternal, numberOfMounts)
 
+	fmt.Printf("generate mounts\n")
+
 	for i := 0; i < int(numberOfMounts); i++ {
 		numberOfOptions := atLeastOneAtMost(r, maxGeneratedMountOptions)
 		options := make([]string, numberOfOptions)
+		fmt.Printf("options size is is %d\n", numberOfOptions)
 		for j := 0; j < int(numberOfOptions); j++ {
 			options[j] = randVariableString(r, maxGeneratedMountOptionLength)
 		}
