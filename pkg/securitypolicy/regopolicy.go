@@ -414,6 +414,8 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 	argList []string,
 	envList []string,
 	workingDir string,
+	sandboxID string,
+	mounts []oci.Mount,
 ) error {
 	policy.mutex.Lock()
 	defer policy.mutex.Unlock()
@@ -431,10 +433,13 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 	}
 
 	input := map[string]interface{}{
-		"name":       "create_container",
-		"argList":    argList,
-		"envList":    envList,
-		"workingDir": workingDir,
+		"name":         "create_container",
+		"argList":      argList,
+		"envList":      envList,
+		"workingDir":   workingDir,
+		"sandboxDir":   spec.SandboxMountsDir(sandboxID),
+		"hugePagesDir": spec.HugePagesMountsDir(sandboxID),
+		"mounts":       mounts,
 	}
 
 	for key, value := range containerInfo {
@@ -477,67 +482,6 @@ func (policy *RegoPolicy) EnforceDeviceUnmountPolicy(unmountTarget string) error
 	delete(devices, unmountTarget)
 
 	return nil
-}
-
-func (policy *RegoPolicy) EnforceMountPolicy(sandboxID, containerID string, mountSpec *oci.Spec) error {
-	policy.mutex.Lock()
-	defer policy.mutex.Unlock()
-
-	var containerInfo map[string]interface{}
-	if containers, found := policy.data["containers"]; found {
-		containerMap := containers.(map[string]interface{})
-		if container, found := containerMap[containerID]; found {
-			containerInfo = container.(map[string]interface{})
-		} else {
-			return fmt.Errorf("container %s does not have a filesystem", containerID)
-		}
-	} else {
-		return fmt.Errorf("container %s does not have a filesystem", containerID)
-	}
-
-	mounts := make([]map[string]interface{}, len(mountSpec.Mounts))
-	for i, mount := range mountSpec.Mounts {
-		mounts[i] = map[string]interface{}{
-			"source":      mount.Source,
-			"destination": mount.Destination,
-			"options":     mount.Options,
-			"type":        mount.Type,
-		}
-	}
-
-	input := map[string]interface{}{
-		"name":         "mount",
-		"sandboxDir":   spec.SandboxMountsDir(sandboxID),
-		"hugePagesDir": spec.HugePagesMountsDir(sandboxID),
-		"mounts":       mounts,
-	}
-
-	for key, value := range containerInfo {
-		input[key] = value
-	}
-
-	result, err := policy.Query(input)
-	if err != nil {
-		return err
-	}
-
-	if result.Allowed() {
-		containerInfo["mounts"] = mounts
-		return nil
-	} else {
-		input["name"] = "reason"
-		input["rule"] = "mount"
-		result, err := policy.Query(input)
-		if err != nil {
-			return err
-		}
-
-		reasons := []string{}
-		for _, reason := range result[0].Expressions[0].Value.([]interface{}) {
-			reasons = append(reasons, reason.(string))
-		}
-		return fmt.Errorf("mount not allowed by policy. Reasons: [%s]", strings.Join(reasons, ","))
-	}
 }
 
 func (policy *RegoPolicy) ExtendDefaultMounts(mounts []oci.Mount) error {

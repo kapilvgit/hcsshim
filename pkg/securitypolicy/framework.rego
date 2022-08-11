@@ -73,6 +73,7 @@ create_container := true {
     command_ok(container)
     envList_ok(container)
     workingDirectory_ok(container)
+    mountList_ok(container)
 }
 
 mountSource_ok(constraint, source) {
@@ -120,14 +121,4 @@ mountList_ok(container) {
     every mount in input.mounts {
         mount_ok(container, mount)
     }
-}
-
-default mount := false
-mount := true {
-    some container in data.policy.containers
-    layerPaths_ok(container)
-    command_ok(container)
-    envList_ok(container)
-    workingDirectory_ok(container)
-    mountList_ok(container)
 }

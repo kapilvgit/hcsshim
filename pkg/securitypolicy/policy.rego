@@ -93,6 +93,5 @@ mountList_matches := true {
 }
 
 reason["invalid mount list"] {
-	input.rule == "mount"
 	not mountList_matches
 }
