@@ -436,10 +436,10 @@ func Test_Rego_MountPolicy_NotAllOptionsFromConstraints(t *testing.T) {
 			return false
 		}
 
-		input_mounts := tc.mounts
+		inputMounts := tc.mounts
 		mindex := randMinMax(testRand, 0, int32(len(tc.mounts)-1))
-		options := input_mounts[mindex].Options
-		input_mounts[mindex].Options = options[:len(options)-1]
+		options := inputMounts[mindex].Options
+		inputMounts[mindex].Options = options[:len(options)-1]
 
 		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
 
@@ -543,17 +543,17 @@ func Test_Rego_MountPolicy_BadOption(t *testing.T) {
 		}
 
 		mindex := randMinMax(testRand, 0, int32(len(tc.mounts)-1))
-		mount_to_change := tc.mounts[mindex]
-		oindex := randMinMax(testRand, 0, int32(len(mount_to_change.Options)-1))
-		new_options := make([]string, len(mount_to_change.Options))
-		for i := 0; i < len(mount_to_change.Options); i++ {
+		mountToChange := tc.mounts[mindex]
+		oindex := randMinMax(testRand, 0, int32(len(mountToChange.Options)-1))
+		newOptions := make([]string, len(mountToChange.Options))
+		for i := 0; i < len(mountToChange.Options); i++ {
 			if int32(i) != oindex {
-				new_options[i] = mount_to_change.Options[i]
+				newOptions[i] = mountToChange.Options[i]
 			} else {
-				new_options[i] = randString(testRand, maxGeneratedMountOptionLength)
+				newOptions[i] = randString(testRand, maxGeneratedMountOptionLength)
 			}
 		}
-		tc.mounts[mindex].Options = new_options
+		tc.mounts[mindex].Options = newOptions
 
 		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
 
@@ -746,7 +746,7 @@ func setupRegoContainerTest(gc *generatedContainers, activate *securityPolicyCon
 	if activate.AllowElevated {
 		mounts = append(mounts, privilegedMounts...)
 	}
-	mount_spec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
+	mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
 
 	return &regoContainerTestConfig{
 		envList:     envList,
@@ -754,7 +754,7 @@ func setupRegoContainerTest(gc *generatedContainers, activate *securityPolicyCon
 		workingDir:  activate.WorkingDir,
 		containerID: containerID,
 		sandboxID:   sandboxID,
-		mounts:      mount_spec.Mounts,
+		mounts:      mountSpec.Mounts,
 		policy:      policy,
 	}, nil
 
