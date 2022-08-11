@@ -6,6 +6,7 @@ package securitypolicy
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/quick"
@@ -14,94 +15,7 @@ import (
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 )
 
-func newCommandFromInternal(args []string) CommandArgs {
-	command := CommandArgs{}
-	command.Length = len(args)
-	command.Elements = make(map[string]string)
-	for i, arg := range args {
-		command.Elements[fmt.Sprint(i)] = arg
-	}
-	return command
-}
-
-func newEnvRulesFromInternal(rules []EnvRuleConfig) EnvRules {
-	envRules := EnvRules{}
-	envRules.Length = len(rules)
-	envRules.Elements = make(map[string]EnvRuleConfig)
-	for i, rule := range rules {
-		envRules.Elements[fmt.Sprint(i)] = rule
-	}
-	return envRules
-}
-
-func newLayersFromInternal(hashes []string) Layers {
-	layers := Layers{}
-	layers.Length = len(hashes)
-	layers.Elements = make(map[string]string)
-	for i, hash := range hashes {
-		layers.Elements[fmt.Sprint(i)] = hash
-	}
-	return layers
-}
-
-func newOptionsFromInternal(optionsInternal []string) Options {
-	options := Options{}
-	options.Length = len(optionsInternal)
-	options.Elements = make(map[string]string)
-	for i, arg := range optionsInternal {
-		options.Elements[fmt.Sprint(i)] = arg
-	}
-	return options
-}
-
-func newMountsFromInternal(mountsInternal []mountInternal) Mounts {
-	mounts := Mounts{}
-	mounts.Length = len(mountsInternal)
-	mounts.Elements = make(map[string]Mount)
-	for i, mount := range mountsInternal {
-		mounts.Elements[fmt.Sprint(i)] = Mount{
-			Source:      mount.Source,
-			Destination: mount.Destination,
-			Options:     newOptionsFromInternal(mount.Options),
-			Type:        mount.Type,
-		}
-	}
-
-	return mounts
-}
-
-func securityPolicyFromInternal(p *generatedContainers) *SecurityPolicy {
-	securityPolicy := new(SecurityPolicy)
-	securityPolicy.AllowAll = false
-	securityPolicy.Containers.Length = len(p.containers)
-	securityPolicy.Containers.Elements = make(map[string]Container)
-	for i, c := range p.containers {
-		container := Container{
-			AllowElevated: c.AllowElevated,
-			WorkingDir:    c.WorkingDir,
-			Command:       newCommandFromInternal(c.Command),
-			EnvRules:      newEnvRulesFromInternal(c.EnvRules),
-			Layers:        newLayersFromInternal(c.Layers),
-			Mounts:        newMountsFromInternal(c.Mounts),
-		}
-		securityPolicy.Containers.Elements[fmt.Sprint(i)] = container
-	}
-	return securityPolicy
-}
-
-func toOCIMounts(mounts []mountInternal) []oci.Mount {
-	result := make([]oci.Mount, len(mounts))
-	for i, mount := range mounts {
-		result[i] = oci.Mount{
-			Source:      mount.Source,
-			Destination: mount.Destination,
-			Options:     mount.Options,
-			Type:        mount.Type,
-		}
-	}
-	return result
-}
-
+// Validate we do our conversion from Json to rego correctly
 func Test_MarshalRego(t *testing.T) {
 	f := func(p *generatedContainers) bool {
 		base64policy, err := securityPolicyFromInternal(p).EncodeToString()
@@ -123,31 +37,6 @@ func Test_MarshalRego(t *testing.T) {
 
 	if err := quick.Check(f, &quick.Config{MaxCount: 4}); err != nil {
 		t.Errorf("Test_MarshalRego failed: %v", err)
-	}
-}
-
-// Verify that RegoSecurityPolicyEnforcer.EnforceDeviceMountPolicy doesn't
-// return an error when there's a matching root hash in the policy
-func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
-		if err != nil {
-			t.Errorf("unable to convert policy to rego: %v", err)
-		}
-
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		target := generateMountTarget(r)
-		rootHash := selectRootHashFromContainers(p, r)
-
-		err = policy.EnforceDeviceMountPolicy(target, rootHash)
-
-		// getting an error means something is broken
-		return err == nil
-	}
-
-	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
-		t.Errorf("Test_Rego_EnforceDeviceMountPolicy_Matches failed: %v", err)
 	}
 }
 
@@ -176,101 +65,63 @@ func Test_Rego_EnforceDeviceMountPolicy_No_Matches(t *testing.T) {
 	}
 }
 
-type regoOverlayTestConfig struct {
-	layers      []string
-	containerID string
-	policy      *RegoPolicy
-}
-
-func setupRegoOverlayTest(gc *generatedContainers, valid bool) (tc *regoOverlayTestConfig, err error) {
-	securityPolicy := securityPolicyFromInternal(gc)
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
-	if err != nil {
-		return nil, err
-	}
-
-	containerID := generateContainerID(testRand)
-	c := selectContainerFromContainers(gc, testRand)
-
-	var layerPaths []string
-	if valid {
-		layerPaths, err = createValidOverlayForContainer(policy, c, testRand)
+// Verify that RegoSecurityPolicyEnforcer.EnforceDeviceMountPolicy doesn't
+// return an error when there's a matching root hash in the policy
+func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		securityPolicy := securityPolicyFromInternal(p)
+		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
-			return nil, fmt.Errorf("error creating valid overlay: %w", err)
+			t.Errorf("unable to convert policy to rego: %v", err)
 		}
-	} else {
-		layerPaths, err = createInvalidOverlayForContainer(policy, c, testRand)
+
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		target := generateMountTarget(r)
+		rootHash := selectRootHashFromContainers(p, r)
+
+		err = policy.EnforceDeviceMountPolicy(target, rootHash)
+
+		// getting an error means something is broken
+		return err == nil
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceDeviceMountPolicy_Matches failed: %v", err)
+	}
+}
+
+func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		securityPolicy := securityPolicyFromInternal(p)
+		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
-			return nil, fmt.Errorf("error creating invalid overlay: %w", err)
+			t.Error(err)
+			return false
 		}
+
+		r := rand.New(rand.NewSource(time.Now().UnixNano()))
+		target := generateMountTarget(r)
+		rootHash := selectRootHashFromContainers(p, r)
+
+		err = policy.EnforceDeviceMountPolicy(target, rootHash)
+		if err != nil {
+			return false
+		}
+
+		err = policy.EnforceDeviceUnmountPolicy(target)
+		if err != nil {
+			return false
+		}
+
+		devices := policy.data["devices"].(map[string]string)
+
+		_, found := devices[target]
+		return !found
 	}
 
-	return &regoOverlayTestConfig{
-		layers:      layerPaths,
-		containerID: containerID,
-		policy:      policy,
-	}, nil
-}
-
-type regoContainerTestConfig struct {
-	envList     []string
-	argList     []string
-	workingDir  string
-	containerID string
-	sandboxID   string
-	mounts      []oci.Mount
-	policy      *RegoPolicy
-}
-
-func setupSimpleRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfig, err error) {
-	c := selectContainerFromContainers(gc, testRand)
-	return setupRegoContainerTest(gc, c)
-}
-
-func setupRegoContainerTest(gc *generatedContainers, activate *securityPolicyContainer) (tc *regoContainerTestConfig, err error) {
-	securityPolicy := securityPolicyFromInternal(gc)
-	defaultMounts := generateMounts(testRand)
-	privilegedMounts := generateMounts(testRand)
-
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
-		toOCIMounts(defaultMounts),
-		toOCIMounts(privilegedMounts))
-	if err != nil {
-		return nil, err
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries failed: %v", err)
 	}
-
-	containerID := generateContainerID(testRand)
-
-	layerPaths, err := createValidOverlayForContainer(policy, activate, testRand)
-	if err != nil {
-		return nil, fmt.Errorf("error creating valid overlay: %w", err)
-	}
-
-	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
-	if err != nil {
-		return nil, fmt.Errorf("error mounting filesystem: %w", err)
-	}
-
-	envList := buildEnvironmentVariablesFromContainerRules(activate, testRand)
-	sandboxID := generateSandboxID(testRand)
-
-	mounts := activate.Mounts
-	mounts = append(mounts, defaultMounts...)
-	if activate.AllowElevated {
-		mounts = append(mounts, privilegedMounts...)
-	}
-	mount_spec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
-
-	return &regoContainerTestConfig{
-		envList:     envList,
-		argList:     activate.Command,
-		workingDir:  activate.WorkingDir,
-		containerID: containerID,
-		sandboxID:   sandboxID,
-		mounts:      mount_spec.Mounts,
-		policy:      policy,
-	}, nil
-
 }
 
 // Verify that RegoSecurityPolicyEnforcer.EnforceOverlayMountPolicy will
@@ -315,56 +166,75 @@ func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 	}
 }
 
-func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
+// Tests the specific case of trying to mount the same overlay twice using the
+// same container id. This should be disallowed.
+func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		tc, err := setupRegoOverlayTest(p, true)
 		if err != nil {
 			t.Error(err)
 			return false
 		}
 
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		target := generateMountTarget(r)
-		rootHash := selectRootHashFromContainers(p, r)
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+			t.Fatalf("expected nil error got: %v", err)
+		}
 
-		err = policy.EnforceDeviceMountPolicy(target, rootHash)
-		if err != nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err == nil {
+			t.Fatalf("able to create overlay for the same container twice")
 			return false
 		}
 
-		err = policy.EnforceDeviceUnmountPolicy(target)
-		if err != nil {
-			return false
-		}
-
-		devices := policy.data["devices"].(map[string]string)
-
-		_, found := devices[target]
-		return !found
+		return true
 	}
 
 	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
-		t.Errorf("Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries failed: %v", err)
+		t.Errorf("Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice: %v", err)
 	}
 }
 
-func Test_Rego_EnforceCreateContainer(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		tc, err := setupSimpleRegoContainerTest(p)
-		if err != nil {
-			t.Error(err)
-			return false
+// TODO: to make this work, we need a constructor that can
+// work directly on the internal containers
+// Test that if more than 1 instance of the same image is started, that we can
+// create all the overlays that are required. So for example, if there are
+// 13 instances of image X that all share the same overlay of root hashes,
+// all 13 should be allowed.
+func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing.T) {
+	for containersToCreate := 2; containersToCreate <= maxContainersInGeneratedPolicy; containersToCreate++ {
+		var containers []*securityPolicyContainer
+
+		for i := 1; i <= containersToCreate; i++ {
+			arg := "command " + strconv.Itoa(i)
+			c := &securityPolicyContainer{
+				Command: []string{arg},
+				Layers:  []string{"1", "2"},
+			}
+
+			containers = append(containers, c)
 		}
 
-		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
+		sp := NewStandardSecurityPolicyEnforcer(containers, "")
 
-		// getting an error means something is broken
-		return err == nil
-	}
+		idsUsed := map[string]bool{}
+		for i := 0; i < len(containers); i++ {
+			layerPaths, err := createValidOverlayForContainer(sp, containers[i], testRand)
+			if err != nil {
+				t.Fatal("unexpected error on test setup")
+			}
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
-		t.Errorf("Test_Rego_EnforceCreateContainer: %v", err)
+			idUnique := false
+			var id string
+			for idUnique == false {
+				id = generateContainerID(testRand)
+				_, found := idsUsed[id]
+				idUnique = !found
+				idsUsed[id] = true
+			}
+			err = sp.EnforceOverlayMountPolicy(id, layerPaths)
+			if err != nil {
+				t.Fatalf("failed with %d containers", containersToCreate)
+			}
+		}
 	}
 }
 
@@ -387,30 +257,6 @@ func Test_Rego_EnforceCommandPolicy_NoMatches(t *testing.T) {
 
 	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
 		t.Errorf("Test_EnforceCommandPolicy_NoMatches: %v", err)
-	}
-}
-
-func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		tc, err := setupSimpleRegoContainerTest(p)
-		if err != nil {
-			t.Error(err)
-			return false
-		}
-
-		envList := append(tc.envList, generateNeverMatchingEnvironmentVariable(testRand))
-		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, envList, tc.workingDir, tc.sandboxID, tc.mounts)
-
-		// not getting an error means something is broken
-		if err == nil {
-			return false
-		}
-
-		return strings.Contains(err.Error(), "invalid env list")
-	}
-
-	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
-		t.Errorf("Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches: %v", err)
 	}
 }
 
@@ -448,6 +294,30 @@ func Test_Rego_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
 	}
 }
 
+func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupSimpleRegoContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		envList := append(tc.envList, generateNeverMatchingEnvironmentVariable(testRand))
+		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, envList, tc.workingDir, tc.sandboxID, tc.mounts)
+
+		// not getting an error means something is broken
+		if err == nil {
+			return false
+		}
+
+		return strings.Contains(err.Error(), "invalid env list")
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches: %v", err)
+	}
+}
+
 func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 	testFunc := func(gc *generatedContainers) bool {
 		tc, err := setupSimpleRegoContainerTest(gc)
@@ -467,6 +337,30 @@ func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 
 	if err := quick.Check(testFunc, &quick.Config{MaxCount: 250}); err != nil {
 		t.Errorf("Test_Rego_WorkingDirectoryPolicy_NoMatches: %v", err)
+	}
+}
+
+// TODO
+func Test_Rego_Overlay_Duplicate_Layers(t *testing.T) {
+	return
+}
+
+func Test_Rego_EnforceCreateContainer(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupSimpleRegoContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
+
+		// getting an error means something is broken
+		return err == nil
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceCreateContainer: %v", err)
 	}
 }
 
@@ -668,4 +562,193 @@ func Test_Rego_MountPolicy_BadOption(t *testing.T) {
 	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
 		t.Errorf("Test_Rego_MountPolicy_BadOption: %v", err)
 	}
+}
+
+//
+// Setup and "fixtures" follow...
+//
+
+func newCommandFromInternal(args []string) CommandArgs {
+	command := CommandArgs{}
+	command.Length = len(args)
+	command.Elements = make(map[string]string)
+	for i, arg := range args {
+		command.Elements[fmt.Sprint(i)] = arg
+	}
+	return command
+}
+
+func newEnvRulesFromInternal(rules []EnvRuleConfig) EnvRules {
+	envRules := EnvRules{}
+	envRules.Length = len(rules)
+	envRules.Elements = make(map[string]EnvRuleConfig)
+	for i, rule := range rules {
+		envRules.Elements[fmt.Sprint(i)] = rule
+	}
+	return envRules
+}
+
+func newLayersFromInternal(hashes []string) Layers {
+	layers := Layers{}
+	layers.Length = len(hashes)
+	layers.Elements = make(map[string]string)
+	for i, hash := range hashes {
+		layers.Elements[fmt.Sprint(i)] = hash
+	}
+	return layers
+}
+
+func newOptionsFromInternal(optionsInternal []string) Options {
+	options := Options{}
+	options.Length = len(optionsInternal)
+	options.Elements = make(map[string]string)
+	for i, arg := range optionsInternal {
+		options.Elements[fmt.Sprint(i)] = arg
+	}
+	return options
+}
+
+func newMountsFromInternal(mountsInternal []mountInternal) Mounts {
+	mounts := Mounts{}
+	mounts.Length = len(mountsInternal)
+	mounts.Elements = make(map[string]Mount)
+	for i, mount := range mountsInternal {
+		mounts.Elements[fmt.Sprint(i)] = Mount{
+			Source:      mount.Source,
+			Destination: mount.Destination,
+			Options:     newOptionsFromInternal(mount.Options),
+			Type:        mount.Type,
+		}
+	}
+
+	return mounts
+}
+
+func securityPolicyFromInternal(p *generatedContainers) *SecurityPolicy {
+	securityPolicy := new(SecurityPolicy)
+	securityPolicy.AllowAll = false
+	securityPolicy.Containers.Length = len(p.containers)
+	securityPolicy.Containers.Elements = make(map[string]Container)
+	for i, c := range p.containers {
+		container := Container{
+			AllowElevated: c.AllowElevated,
+			WorkingDir:    c.WorkingDir,
+			Command:       newCommandFromInternal(c.Command),
+			EnvRules:      newEnvRulesFromInternal(c.EnvRules),
+			Layers:        newLayersFromInternal(c.Layers),
+			Mounts:        newMountsFromInternal(c.Mounts),
+		}
+		securityPolicy.Containers.Elements[fmt.Sprint(i)] = container
+	}
+	return securityPolicy
+}
+
+func toOCIMounts(mounts []mountInternal) []oci.Mount {
+	result := make([]oci.Mount, len(mounts))
+	for i, mount := range mounts {
+		result[i] = oci.Mount{
+			Source:      mount.Source,
+			Destination: mount.Destination,
+			Options:     mount.Options,
+			Type:        mount.Type,
+		}
+	}
+	return result
+}
+
+type regoOverlayTestConfig struct {
+	layers      []string
+	containerID string
+	policy      *RegoPolicy
+}
+
+func setupRegoOverlayTest(gc *generatedContainers, valid bool) (tc *regoOverlayTestConfig, err error) {
+	securityPolicy := securityPolicyFromInternal(gc)
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	if err != nil {
+		return nil, err
+	}
+
+	containerID := generateContainerID(testRand)
+	c := selectContainerFromContainers(gc, testRand)
+
+	var layerPaths []string
+	if valid {
+		layerPaths, err = createValidOverlayForContainer(policy, c, testRand)
+		if err != nil {
+			return nil, fmt.Errorf("error creating valid overlay: %w", err)
+		}
+	} else {
+		layerPaths, err = createInvalidOverlayForContainer(policy, c, testRand)
+		if err != nil {
+			return nil, fmt.Errorf("error creating invalid overlay: %w", err)
+		}
+	}
+
+	return &regoOverlayTestConfig{
+		layers:      layerPaths,
+		containerID: containerID,
+		policy:      policy,
+	}, nil
+}
+
+type regoContainerTestConfig struct {
+	envList     []string
+	argList     []string
+	workingDir  string
+	containerID string
+	sandboxID   string
+	mounts      []oci.Mount
+	policy      *RegoPolicy
+}
+
+func setupSimpleRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfig, err error) {
+	c := selectContainerFromContainers(gc, testRand)
+	return setupRegoContainerTest(gc, c)
+}
+
+func setupRegoContainerTest(gc *generatedContainers, activate *securityPolicyContainer) (tc *regoContainerTestConfig, err error) {
+	securityPolicy := securityPolicyFromInternal(gc)
+	defaultMounts := generateMounts(testRand)
+	privilegedMounts := generateMounts(testRand)
+
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+		toOCIMounts(defaultMounts),
+		toOCIMounts(privilegedMounts))
+	if err != nil {
+		return nil, err
+	}
+
+	containerID := generateContainerID(testRand)
+
+	layerPaths, err := createValidOverlayForContainer(policy, activate, testRand)
+	if err != nil {
+		return nil, fmt.Errorf("error creating valid overlay: %w", err)
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	if err != nil {
+		return nil, fmt.Errorf("error mounting filesystem: %w", err)
+	}
+
+	envList := buildEnvironmentVariablesFromContainerRules(activate, testRand)
+	sandboxID := generateSandboxID(testRand)
+
+	mounts := activate.Mounts
+	mounts = append(mounts, defaultMounts...)
+	if activate.AllowElevated {
+		mounts = append(mounts, privilegedMounts...)
+	}
+	mount_spec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
+
+	return &regoContainerTestConfig{
+		envList:     envList,
+		argList:     activate.Command,
+		workingDir:  activate.WorkingDir,
+		containerID: containerID,
+		sandboxID:   sandboxID,
+		mounts:      mount_spec.Mounts,
+		policy:      policy,
+	}, nil
+
 }
