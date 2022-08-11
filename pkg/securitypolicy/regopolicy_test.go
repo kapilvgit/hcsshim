@@ -222,7 +222,12 @@ type regoContainerTestConfig struct {
 	policy      *RegoPolicy
 }
 
-func setupRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfig, err error) {
+func setupSimpleRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfig, err error) {
+	c := selectContainerFromContainers(gc, testRand)
+	return setupRegoContainerTest(gc, c)
+}
+
+func setupRegoContainerTest(gc *generatedContainers, activate *securityPolicyContainer) (tc *regoContainerTestConfig, err error) {
 	securityPolicy := securityPolicyFromInternal(gc)
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
@@ -235,9 +240,8 @@ func setupRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfi
 	}
 
 	containerID := generateContainerID(testRand)
-	c := selectContainerFromContainers(gc, testRand)
 
-	layerPaths, err := createValidOverlayForContainer(policy, c, testRand)
+	layerPaths, err := createValidOverlayForContainer(policy, activate, testRand)
 	if err != nil {
 		return nil, fmt.Errorf("error creating valid overlay: %w", err)
 	}
@@ -247,20 +251,20 @@ func setupRegoContainerTest(gc *generatedContainers) (tc *regoContainerTestConfi
 		return nil, fmt.Errorf("error mounting filesystem: %w", err)
 	}
 
-	envList := buildEnvironmentVariablesFromContainerRules(c, testRand)
+	envList := buildEnvironmentVariablesFromContainerRules(activate, testRand)
 	sandboxID := generateSandboxID(testRand)
 
-	mounts := c.Mounts
+	mounts := activate.Mounts
 	mounts = append(mounts, defaultMounts...)
-	if c.AllowElevated {
+	if activate.AllowElevated {
 		mounts = append(mounts, privilegedMounts...)
 	}
 	mount_spec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
 
 	return &regoContainerTestConfig{
 		envList:     envList,
-		argList:     c.Command,
-		workingDir:  c.WorkingDir,
+		argList:     activate.Command,
+		workingDir:  activate.WorkingDir,
 		containerID: containerID,
 		sandboxID:   sandboxID,
 		mounts:      mount_spec.Mounts,
@@ -347,7 +351,7 @@ func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
 
 func Test_Rego_EnforceCreateContainer(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -366,7 +370,7 @@ func Test_Rego_EnforceCreateContainer(t *testing.T) {
 
 func Test_Rego_EnforceCommandPolicy_NoMatches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -388,7 +392,7 @@ func Test_Rego_EnforceCommandPolicy_NoMatches(t *testing.T) {
 
 func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -411,35 +415,42 @@ func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
 }
 
 func Test_Rego_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
-	p := generateContainers(testRand, 1)
+	testFunc := func(gc *generatedContainers) bool {
+		container := selectContainerFromContainers(gc, testRand)
+		// add a rule to re2 match
+		re2MatchRule := EnvRuleConfig{
+			Strategy: EnvVarRuleRegex,
+			Rule:     "PREFIX_.+=.+",
+		}
 
-	container := generateContainersContainer(testRand, 1, 1)
-	// add a rule to re2 match
-	re2MatchRule := EnvRuleConfig{
-		Strategy: EnvVarRuleRegex,
-		Rule:     "PREFIX_.+=.+",
+		container.EnvRules = append(container.EnvRules, re2MatchRule)
+
+		tc, err := setupRegoContainerTest(gc, container)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		envList := append(tc.envList, "PREFIX_FOO=BAR")
+		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, envList, tc.workingDir, tc.sandboxID, tc.mounts)
+
+		// getting an error means something is broken
+		if err != nil {
+			t.Errorf("Expected container setup to be allowed. It wasn't: %v", err)
+			return false
+		}
+
+		return true
 	}
-	container.EnvRules = append(container.EnvRules, re2MatchRule)
-	p.containers = append(p.containers, container)
 
-	tc, err := setupRegoContainerTest(p)
-	if err != nil {
-		t.Error(err)
-		return
-	}
-
-	envList := append(tc.envList, "PREFIX_FOO=BAR")
-	err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, envList, tc.workingDir, tc.sandboxID, tc.mounts)
-
-	// getting an error means something is broken
-	if err != nil {
-		t.Fatalf("expected nil error got: %v", err)
+	if err := quick.Check(testFunc, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceEnvironmentVariablePolicy_Re2Match: %v", err)
 	}
 }
 
 func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 	testFunc := func(gc *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(gc)
+		tc, err := setupSimpleRegoContainerTest(gc)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -461,7 +472,7 @@ func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 
 func Test_Rego_ExtendDefaultMounts(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -490,7 +501,7 @@ func Test_Rego_ExtendDefaultMounts(t *testing.T) {
 
 func Test_Rego_MountPolicy_NoMatches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -518,7 +529,7 @@ func Test_Rego_MountPolicy_NoMatches(t *testing.T) {
 
 func Test_Rego_MountPolicy_NotAllOptionsFromConstraints(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -546,7 +557,7 @@ func Test_Rego_MountPolicy_NotAllOptionsFromConstraints(t *testing.T) {
 
 func Test_Rego_MountPolicy_BadSource(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -572,7 +583,7 @@ func Test_Rego_MountPolicy_BadSource(t *testing.T) {
 
 func Test_Rego_MountPolicy_BadDestination(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -598,7 +609,7 @@ func Test_Rego_MountPolicy_BadDestination(t *testing.T) {
 
 func Test_Rego_MountPolicy_BadType(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
@@ -624,7 +635,7 @@ func Test_Rego_MountPolicy_BadType(t *testing.T) {
 
 func Test_Rego_MountPolicy_BadOption(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		tc, err := setupRegoContainerTest(p)
+		tc, err := setupSimpleRegoContainerTest(p)
 		if err != nil {
 			t.Error(err)
 			return false
