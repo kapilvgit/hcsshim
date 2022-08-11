@@ -347,11 +347,6 @@ func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 	}
 }
 
-// TODO
-func Test_Rego_Overlay_Duplicate_Layers(t *testing.T) {
-	return
-}
-
 func Test_Rego_EnforceCreateContainer(t *testing.T) {
 	f := func(p *generatedContainers) bool {
 		tc, err := setupSimpleRegoContainerTest(p)
