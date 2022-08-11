@@ -193,14 +193,13 @@ func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testi
 	}
 }
 
-// TODO: to make this work, we need a constructor that can
 // work directly on the internal containers
 // Test that if more than 1 instance of the same image is started, that we can
 // create all the overlays that are required. So for example, if there are
 // 13 instances of image X that all share the same overlay of root hashes,
 // all 13 should be allowed.
 func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing.T) {
-	for containersToCreate := 2; containersToCreate <= maxContainersInGeneratedPolicy; containersToCreate++ {
+	for containersToCreate := 13; containersToCreate <= maxContainersInGeneratedPolicy; containersToCreate++ {
 		var containers []*securityPolicyContainer
 
 		for i := 1; i <= containersToCreate; i++ {
@@ -213,11 +212,19 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 			containers = append(containers, c)
 		}
 
-		sp := NewStandardSecurityPolicyEnforcer(containers, "")
+		gcontainers := &generatedContainers{
+			containers: containers,
+		}
+
+		securityPolicy := securityPolicyFromInternal(gcontainers)
+		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		if err != nil {
+			t.Fatalf("failed create enforcer")
+		}
 
 		idsUsed := map[string]bool{}
 		for i := 0; i < len(containers); i++ {
-			layerPaths, err := createValidOverlayForContainer(sp, containers[i], testRand)
+			layerPaths, err := createValidOverlayForContainer(policy, containers[i], testRand)
 			if err != nil {
 				t.Fatal("unexpected error on test setup")
 			}
@@ -230,7 +237,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 				idUnique = !found
 				idsUsed[id] = true
 			}
-			err = sp.EnforceOverlayMountPolicy(id, layerPaths)
+			err = policy.EnforceOverlayMountPolicy(id, layerPaths)
 			if err != nil {
 				t.Fatalf("failed with %d containers", containersToCreate)
 			}
