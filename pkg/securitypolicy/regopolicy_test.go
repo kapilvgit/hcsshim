@@ -220,6 +220,53 @@ func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testi
 	}
 }
 
+func Test_Rego_EnforceOverlayMountPolicy_Reusing_ID_Across_Overlays(t *testing.T) {
+	var containers []*securityPolicyContainer
+
+	for i := 0; i < 2; i++ {
+		containers = append(containers, generateContainersContainer(testRand, 1, maxLayersInGeneratedContainer))
+	}
+
+	gc := &generatedContainers{
+		containers: containers,
+	}
+
+	securityPolicy := securityPolicyFromInternal(gc)
+	defaultMounts := generateMounts(testRand)
+	privilegedMounts := generateMounts(testRand)
+
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+		toOCIMounts(defaultMounts),
+		toOCIMounts(privilegedMounts))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	containerID := testDataGenerator.uniqueContainerID()
+
+	// First usage should work
+	layerPaths, err := testDataGenerator.createValidOverlayForContainer(policy, containers[0])
+	if err != nil {
+		t.Fatalf("Unexpected error creating valid overlay: %v", err)
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	if err != nil {
+		t.Fatalf("Unexpected error mounting overlay filesystem: %v", err)
+	}
+
+	// Reusing container ID with another overlay should fail
+	layerPaths, err = testDataGenerator.createValidOverlayForContainer(policy, containers[1])
+	if err != nil {
+		t.Fatalf("Unexpected error creating valid overlay: %v", err)
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	if err == nil {
+		t.Fatalf("Unexpected success mounting overlay filesystem")
+	}
+}
+
 // work directly on the internal containers
 // Test that if more than 1 instance of the same image is started, that we can
 // create all the overlays that are required. So for example, if there are
