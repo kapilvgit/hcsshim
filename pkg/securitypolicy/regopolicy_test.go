@@ -578,7 +578,7 @@ func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
 	}
 
 	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
-		t.Errorf("Test_Rego_EnforceCreateContainer: %v", err)
+		t.Errorf("Test_Rego_Enforce_CreateContainer_Start_All_Containers: %v", err)
 	}
 }
 
