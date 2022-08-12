@@ -10,7 +10,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 
@@ -359,7 +358,7 @@ func (policy *RegoPolicy) EnforceDeviceMountPolicy(target string, deviceHash str
 		if devices, found := policy.data["devices"]; found {
 			deviceMap := devices.(map[string]string)
 			if _, e := deviceMap[target]; e {
-				log.Fatalf("device %s already mounted", target)
+				return fmt.Errorf("device %s already mounted", target)
 			}
 			deviceMap[target] = deviceHash
 		} else {

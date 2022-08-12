@@ -120,6 +120,37 @@ func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
 	}
 }
 
+func Test_Rego_EnforceDeviceMountPolicy_Duplicate_Device_Target(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		securityPolicy := securityPolicyFromInternal(p)
+		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		if err != nil {
+			t.Errorf("unable to convert policy to rego: %v", err)
+		}
+
+		target := testDataGenerator.uniqueMountTarget()
+		rootHash := selectRootHashFromContainers(p, testRand)
+		err = policy.EnforceDeviceMountPolicy(target, rootHash)
+		if err != nil {
+			t.Error("Valid device mount failed. It shouldn't have.")
+			return false
+		}
+
+		rootHash = selectRootHashFromContainers(p, testRand)
+		err = policy.EnforceDeviceMountPolicy(target, rootHash)
+		if err == nil {
+			t.Error("Duplicate device mount target was allowed. It shouldn't have been.")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceDeviceMountPolicy_Duplicate_Device_Target failed: %v", err)
+	}
+}
+
 // Verify that RegoSecurityPolicyEnforcer.EnforceOverlayMountPolicy will
 // return an error when there's no matching overlay targets.
 func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
