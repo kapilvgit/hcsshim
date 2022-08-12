@@ -385,6 +385,26 @@ func Test_Rego_EnforceCreateContainer(t *testing.T) {
 	}
 }
 
+func Test_Rego_EnforceCreateContainer_Invalid_ContainerID(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupSimpleRegoContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		containerID := testDataGenerator.uniqueContainerID()
+		err = tc.policy.EnforceCreateContainerPolicy(containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
+
+		// not getting an error means something is broken
+		return err != nil
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceCreateContainer_Invalid_ContainerID: %v", err)
+	}
+}
+
 func Test_Rego_ExtendDefaultMounts(t *testing.T) {
 	f := func(p *generatedContainers) bool {
 		tc, err := setupSimpleRegoContainerTest(p)
