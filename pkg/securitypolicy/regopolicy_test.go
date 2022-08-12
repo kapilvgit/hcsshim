@@ -405,6 +405,33 @@ func Test_Rego_EnforceCreateContainer_Invalid_ContainerID(t *testing.T) {
 	}
 }
 
+func Test_Rego_EnforceCreateContainer_Same_Container_Twice(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupSimpleRegoContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
+		if err != nil {
+			t.Error("Unable to start valid container.")
+			return false
+		}
+		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
+		if err == nil {
+			t.Error("Able to start a container with already used id.")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceCreateContainer_Same_Container_Twice: %v", err)
+	}
+}
+
 func Test_Rego_ExtendDefaultMounts(t *testing.T) {
 	f := func(p *generatedContainers) bool {
 		tc, err := setupSimpleRegoContainerTest(p)
