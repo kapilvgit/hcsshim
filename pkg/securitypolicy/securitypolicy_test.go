@@ -45,11 +45,13 @@ const (
 )
 
 var testRand *rand.Rand
+var testDataGenerator *dataGenerator
 
 func init() {
 	seed := rand.NewSource(time.Now().Unix())
 	testRand = rand.New(seed)
 	fmt.Fprintf(os.Stdout, "securitypolicy_test seed: %d\n", seed.Int63())
+	testDataGenerator = newDataGenerator(testRand)
 }
 
 // Validate that our conversion from the external SecurityPolicy representation
