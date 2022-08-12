@@ -193,6 +193,40 @@ func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 	}
 }
 
+// Test that an image that contains layers that share a roothash value can be
+// successfully mounted. This was a failure scenario in an earlier policy engine
+// implementation.
+func Test_Rego_EnforceOverlayMountPolicy_Layers_With_Same_Root_Hash(t *testing.T) {
+
+	container := generateContainersContainer(testRand, 2, maxLayersInGeneratedContainer)
+
+	// make the last two layers have the same hash value
+	numLayers := len(container.Layers)
+	container.Layers[numLayers-2] = container.Layers[numLayers-1]
+
+	gc := &generatedContainers{
+		containers: []*securityPolicyContainer{container},
+	}
+
+	securityPolicy := securityPolicyFromInternal(gc)
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	if err != nil {
+		t.Fatal("Unable to create security policy")
+	}
+
+	containerID := testDataGenerator.uniqueContainerID()
+
+	layers, err := testDataGenerator.createValidOverlayForContainer(policy, container)
+	if err != nil {
+		t.Fatalf("error creating valid overlay: %v", err)
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, layers)
+	if err != nil {
+		t.Fatalf("Unable to create an overlay where root hashes are the same")
+	}
+}
+
 // Tests the specific case of trying to mount the same overlay twice using the
 // same container id. This should be disallowed.
 func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
