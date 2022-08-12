@@ -218,21 +218,13 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 			t.Fatalf("failed create enforcer")
 		}
 
-		idsUsed := map[string]bool{}
 		for i := 0; i < len(containers); i++ {
 			layerPaths, err := testDataGenerator.createValidOverlayForContainer(policy, containers[i])
 			if err != nil {
 				t.Fatal("unexpected error on test setup")
 			}
 
-			idUnique := false
-			var id string
-			for idUnique == false {
-				id = generateContainerID(testRand)
-				_, found := idsUsed[id]
-				idUnique = !found
-				idsUsed[id] = true
-			}
+			id := testDataGenerator.uniqueContainerID()
 			err = policy.EnforceOverlayMountPolicy(id, layerPaths)
 			if err != nil {
 				t.Fatalf("failed with %d containers", containersToCreate)
@@ -667,7 +659,7 @@ func setupRegoOverlayTest(gc *generatedContainers, valid bool) (tc *regoOverlayT
 		return nil, err
 	}
 
-	containerID := generateContainerID(testRand)
+	containerID := testDataGenerator.uniqueContainerID()
 	c := selectContainerFromContainers(gc, testRand)
 
 	var layerPaths []string
@@ -717,7 +709,7 @@ func setupRegoContainerTest(gc *generatedContainers, activate *securityPolicyCon
 		return nil, err
 	}
 
-	containerID := generateContainerID(testRand)
+	containerID := testDataGenerator.uniqueContainerID()
 
 	layerPaths, err := testDataGenerator.createValidOverlayForContainer(policy, activate)
 	if err != nil {
