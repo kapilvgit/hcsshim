@@ -385,6 +385,52 @@ func Test_Rego_EnforceCreateContainer(t *testing.T) {
 	}
 }
 
+func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		securityPolicy := securityPolicyFromInternal(p)
+		defaultMounts := generateMounts(testRand)
+		privilegedMounts := generateMounts(testRand)
+
+		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+			toOCIMounts(defaultMounts),
+			toOCIMounts(privilegedMounts))
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		for _, container := range p.containers {
+			containerID, err := mountImageForContainer(policy, container)
+			if err != nil {
+				t.Error(err)
+				return false
+			}
+
+			envList := buildEnvironmentVariablesFromContainerRules(container, testRand)
+
+			sandboxID := generateSandboxID(testRand)
+			mounts := container.Mounts
+			mounts = append(mounts, defaultMounts...)
+			if container.AllowElevated {
+				mounts = append(mounts, privilegedMounts...)
+			}
+			mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
+
+			err = policy.EnforceCreateContainerPolicy(containerID, container.Command, envList, container.WorkingDir, sandboxID, mountSpec.Mounts)
+
+			// getting an error means something is broken
+			return err == nil
+		}
+
+		return true
+
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+		t.Errorf("Test_Rego_EnforceCreateContainer: %v", err)
+	}
+}
+
 func Test_Rego_EnforceCreateContainer_Invalid_ContainerID(t *testing.T) {
 	f := func(p *generatedContainers) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
@@ -429,52 +475,6 @@ func Test_Rego_EnforceCreateContainer_Same_Container_Twice(t *testing.T) {
 
 	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
 		t.Errorf("Test_Rego_EnforceCreateContainer_Same_Container_Twice: %v", err)
-	}
-}
-
-func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p)
-		defaultMounts := generateMounts(testRand)
-		privilegedMounts := generateMounts(testRand)
-
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
-			toOCIMounts(defaultMounts),
-			toOCIMounts(privilegedMounts))
-		if err != nil {
-			t.Error(err)
-			return false
-		}
-
-		for _, container := range p.containers {
-			containerID, err := mountImageForContainer(policy, container)
-			if err != nil {
-				t.Error(err)
-				return false
-			}
-
-			envList := buildEnvironmentVariablesFromContainerRules(container, testRand)
-
-			sandboxID := generateSandboxID(testRand)
-			mounts := container.Mounts
-			mounts = append(mounts, defaultMounts...)
-			if container.AllowElevated {
-				mounts = append(mounts, privilegedMounts...)
-			}
-			mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
-
-			err = policy.EnforceCreateContainerPolicy(containerID, container.Command, envList, container.WorkingDir, sandboxID, mountSpec.Mounts)
-
-			// getting an error means something is broken
-			return err == nil
-		}
-
-		return true
-
-	}
-
-	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
-		t.Errorf("Test_Rego_EnforceCreateContainer: %v", err)
 	}
 }
 
