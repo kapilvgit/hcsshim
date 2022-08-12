@@ -223,6 +223,88 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_With_Same_Root_Hash(t *testing.T
 	}
 }
 
+// Test that can we mount overlays across containers where some layers are
+// shared and on the same device. A common example of this is a base image that
+// is used by many containers.
+// The setup for this test is rather complicated
+func Test_Rego_EnforceOverlayMountPolicy_Layers_Shared_Layers(t *testing.T) {
+	containerOne := generateContainersContainer(testRand, 1, 2)
+	containerTwo := generateContainersContainer(testRand, 1, 10)
+
+	sharedLayerIndex := 0
+
+	// Make the two containers have the same base layer
+	containerTwo.Layers[sharedLayerIndex] = containerOne.Layers[sharedLayerIndex]
+	containers := []*securityPolicyContainer{containerOne, containerTwo}
+
+	securityPolicy := securityPolicyFromInternal(containers)
+	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	if err != nil {
+		t.Fatal("Unable to create security policy")
+	}
+
+	//
+	// Mount our first containers overlay. This should all work.
+	//
+	containerID := testDataGenerator.uniqueContainerID()
+
+	// Create overlay
+	containerOneOverlay := make([]string, len(containerOne.Layers))
+
+	sharedMount := ""
+	for i := 0; i < len(containerOne.Layers); i++ {
+		mount := testDataGenerator.uniqueMountTarget()
+		err := policy.EnforceDeviceMountPolicy(mount, containerOne.Layers[i])
+		if err != nil {
+			t.Fatalf("Unexpected error mounting overlay device: %v", err)
+		}
+		if i == sharedLayerIndex {
+			sharedMount = mount
+		}
+
+		containerOneOverlay[len(containerOneOverlay)-i-1] = mount
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, containerOneOverlay)
+	if err != nil {
+		t.Fatalf("Unexpected error mounting overlay: %v", err)
+	}
+
+	//
+	// Mount our second contaniers overlay. This should all work.
+	//
+	containerID = testDataGenerator.uniqueContainerID()
+
+	// Create overlay
+	containerTwoOverlay := make([]string, len(containerTwo.Layers))
+
+	for i := 0; i < len(containerTwo.Layers); i++ {
+		var mount string
+		if i != sharedLayerIndex {
+			mount = testDataGenerator.uniqueMountTarget()
+
+			err := policy.EnforceDeviceMountPolicy(mount, containerTwo.Layers[i])
+			if err != nil {
+				t.Fatalf("Unexpected error mounting overlay device: %v", err)
+			}
+		} else {
+			mount = sharedMount
+		}
+
+		containerTwoOverlay[len(containerTwoOverlay)-i-1] = mount
+	}
+
+	err = policy.EnforceOverlayMountPolicy(containerID, containerTwoOverlay)
+	if err != nil {
+		t.Fatalf("Unexpected error mounting overlay: %v", err)
+	}
+
+	// A final sanity check that we really had a shared mount
+	if containerOneOverlay[len(containerOneOverlay)-1] != containerTwoOverlay[len(containerTwoOverlay)-1] {
+		t.Fatal("Ooops. Looks like we botched our test setup.")
+	}
+}
+
 // Tests the specific case of trying to mount the same overlay twice using the
 // same container id. This should be disallowed.
 func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
