@@ -807,15 +807,7 @@ func Test_Rego_MountPolicy_BadOption(t *testing.T) {
 		mindex := randMinMax(testRand, 0, int32(len(tc.mounts)-1))
 		mountToChange := tc.mounts[mindex]
 		oindex := randMinMax(testRand, 0, int32(len(mountToChange.Options)-1))
-		newOptions := make([]string, len(mountToChange.Options))
-		for i := 0; i < len(mountToChange.Options); i++ {
-			if int32(i) != oindex {
-				newOptions[i] = mountToChange.Options[i]
-			} else {
-				newOptions[i] = randString(testRand, maxGeneratedMountOptionLength)
-			}
-		}
-		tc.mounts[mindex].Options = newOptions
+		tc.mounts[mindex].Options[oindex] = randString(testRand, maxGeneratedMountOptionLength)
 
 		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
 
