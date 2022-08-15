@@ -385,6 +385,8 @@ func (policy *RegoPolicy) EnforceOverlayMountPolicy(containerID string, layerPat
 	}
 
 	if result.Allowed() {
+		// we store the mapping of container ID -> layerPaths for later
+		// use in EnforceCreateContainerPolicy here.
 		if containers, found := policy.data["containers"]; found {
 			containerMap := containers.(map[string]interface{})
 			if _, found := containerMap[containerID]; found {
@@ -419,6 +421,8 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 	policy.mutex.Lock()
 	defer policy.mutex.Unlock()
 
+	// first, we need to obtain the overlay filestytem information
+	// which was stored in EnforceOverlayMountPolicy
 	var containerInfo map[string]interface{}
 	if containers, found := policy.data["containers"]; found {
 		containerMap := containers.(map[string]interface{})
@@ -441,6 +445,7 @@ func (policy *RegoPolicy) EnforceCreateContainerPolicy(containerID string,
 		"mounts":       mounts,
 	}
 
+	// this adds the overlay layerPaths array to the input
 	for key, value := range containerInfo {
 		input[key] = value
 	}
