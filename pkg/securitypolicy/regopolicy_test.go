@@ -4,6 +4,7 @@
 package securitypolicy
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -924,6 +925,34 @@ func toOCIMounts(mounts []mountInternal) []oci.Mount {
 	return result
 }
 
+/**
+ * NOTE_TESTCOPY: the following "copy*" functions are provided to ensure that
+ * everything passed to the policy is a new object which will not be shared in
+ * any way with other policy objects in other tests. In any additional fixture
+ * setup routines these functions (or others like them) should be used.
+ */
+
+func copyStrings(values []string) []string {
+	valuesCopy := make([]string, len(values))
+	copy(valuesCopy, values)
+	return valuesCopy
+}
+
+func copyMounts(mounts []oci.Mount) []oci.Mount {
+	bytes, err := json.Marshal(mounts)
+	if err != nil {
+		panic(err)
+	}
+
+	mountsCopy := make([]oci.Mount, len(mounts))
+	err = json.Unmarshal(bytes, &mountsCopy)
+	if err != nil {
+		panic(err)
+	}
+
+	return mountsCopy
+}
+
 type regoOverlayTestConfig struct {
 	layers      []string
 	containerID string
@@ -953,8 +982,9 @@ func setupRegoOverlayTest(gc *generatedContainers, valid bool) (tc *regoOverlayT
 		}
 	}
 
+	// see NOTE_TESTCOPY
 	return &regoOverlayTestConfig{
-		layers:      layerPaths,
+		layers:      copyStrings(layerPaths),
 		containerID: containerID,
 		policy:      policy,
 	}, nil
@@ -1002,13 +1032,14 @@ func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securi
 	}
 	mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
 
+	// see NOTE_TESTCOPY
 	return &regoContainerTestConfig{
-		envList:     envList,
-		argList:     testContainer.Command,
+		envList:     copyStrings(envList),
+		argList:     copyStrings(testContainer.Command),
 		workingDir:  testContainer.WorkingDir,
 		containerID: containerID,
 		sandboxID:   sandboxID,
-		mounts:      mountSpec.Mounts,
+		mounts:      copyMounts(mountSpec.Mounts),
 		policy:      policy,
 	}, nil
 }
@@ -1021,7 +1052,8 @@ func mountImageForContainer(policy *RegoPolicy, container *securityPolicyContain
 		return "", fmt.Errorf("error creating valid overlay: %w", err)
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	// see NOTE_TESTCOPY
+	err = policy.EnforceOverlayMountPolicy(containerID, copyStrings(layerPaths))
 	if err != nil {
 		return "", fmt.Errorf("error mounting filesystem: %w", err)
 	}
