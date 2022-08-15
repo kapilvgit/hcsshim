@@ -302,7 +302,14 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 	policy.ExtendDefaultMounts(defaultMounts)
 	policy.ExtendDefaultMounts(privilegedMounts)
 
-	if compiled, err := ast.CompileModules(modules); err == nil {
+	// TODO temporary hack for debugging policies until GCS logging design
+	// and implementation is finalized. This option should be changed to
+	// "true" if debugging is desired.
+	options := ast.CompileOpts{
+		EnablePrintStatements: false,
+	}
+
+	if compiled, err := ast.CompileModulesWithOpt(modules, options); err == nil {
 		policy.compiledModules = compiled
 	} else {
 		return nil, fmt.Errorf("rego compilation failed: %w", err)
@@ -321,7 +328,6 @@ func (policy RegoPolicy) Query(input map[string]interface{}) (rego.ResultSet, er
 		rego.Compiler(policy.compiledModules),
 		rego.Input(input),
 		rego.Store(store),
-		rego.EnablePrintStatements(true),
 		rego.PrintHook(topdown.NewPrintHook(&buf)))
 
 	ctx := context.Background()
