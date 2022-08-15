@@ -41,23 +41,10 @@ env_ok(pattern, "re2", value) {
     regex.match(pattern, value)
 }
 
-rule_ok(rule, envList) {
-    not rule.required
-}
-
-rule_ok(rule, envList) {
-    some env in input.envList
-    env_ok(rule.pattern, rule.strategy, env)
-}
-
 envList_ok(container) {
     every env in input.envList {
         some rule in container.env_rules
         env_ok(rule.pattern, rule.strategy, env)
-    }
-
-    every rule in container.env_rules {
-        rule_ok(rule, input.envList)
     }
 }
 

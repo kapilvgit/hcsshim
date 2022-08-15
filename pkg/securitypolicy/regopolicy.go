@@ -99,7 +99,7 @@ func writeCommand(builder *strings.Builder, command CommandArgs, indent string) 
 }
 
 func (e EnvRuleConfig) MarshalRego() string {
-	return fmt.Sprintf("{\"pattern\": \"%s\", \"strategy\": \"%s\", \"required\": false}", e.Rule, e.Strategy)
+	return fmt.Sprintf("{\"pattern\": \"%s\", \"strategy\": \"%s\"}", e.Rule, e.Strategy)
 }
 
 func (e EnvRules) MarshalRego() (string, error) {
