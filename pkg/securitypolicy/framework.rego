@@ -3,8 +3,6 @@ package framework
 import future.keywords.every
 import future.keywords.in
 
-svn := "0.1.0"
-
 default mount_device := false
 mount_device := true {
     some container in data.policy.containers
