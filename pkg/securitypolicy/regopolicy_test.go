@@ -570,14 +570,17 @@ func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
 			err = policy.EnforceCreateContainerPolicy(containerID, container.Command, envList, container.WorkingDir, sandboxID, mountSpec.Mounts)
 
 			// getting an error means something is broken
-			return err == nil
+			if err != nil {
+				t.Error(err)
+				return false
+			}
 		}
 
 		return true
 
 	}
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 250}); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
 		t.Errorf("Test_Rego_Enforce_CreateContainer_Start_All_Containers: %v", err)
 	}
 }
