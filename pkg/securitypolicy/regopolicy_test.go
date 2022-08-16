@@ -560,7 +560,7 @@ func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
 
 			envList := buildEnvironmentVariablesFromContainerRules(container, testRand)
 
-			sandboxID := generateSandboxID(testRand)
+			sandboxID := testDataGenerator.uniqueSandboxID()
 			mounts := container.Mounts
 			mounts = append(mounts, defaultMounts...)
 			if container.AllowElevated {
@@ -1015,7 +1015,7 @@ func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securi
 	}
 
 	envList := buildEnvironmentVariablesFromContainerRules(testContainer, testRand)
-	sandboxID := generateSandboxID(testRand)
+	sandboxID := testDataGenerator.uniqueSandboxID()
 
 	mounts := testContainer.Mounts
 	mounts = append(mounts, defaultMounts...)
@@ -1057,6 +1057,7 @@ type dataGenerator struct {
 	rng          *rand.Rand
 	mountTargets map[string]struct{}
 	containerIDs map[string]struct{}
+	sandboxIDs   map[string]struct{}
 }
 
 func newDataGenerator(rng *rand.Rand) *dataGenerator {
@@ -1082,6 +1083,16 @@ func (gen *dataGenerator) uniqueContainerID() string {
 		t := generateContainerID(gen.rng)
 		if _, ok := gen.containerIDs[t]; !ok {
 			gen.containerIDs[t] = struct{}{}
+			return t
+		}
+	}
+}
+
+func (gen *dataGenerator) uniqueSandboxID() string {
+	for {
+		t := generateSandboxID(gen.rng)
+		if _, ok := gen.sandboxIDs[t]; !ok {
+			gen.sandboxIDs[t] = struct{}{}
 			return t
 		}
 	}
