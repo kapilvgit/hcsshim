@@ -12,8 +12,184 @@ import (
 	"testing"
 	"testing/quick"
 
+	"github.com/Microsoft/hcsshim/internal/guestpath"
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 )
+
+type benchmarkConfig struct {
+	Containers       *generatedContainers    `json:"containers"`
+	Policy           *securityPolicyInternal `json:"policy"`
+	DefaultMounts    []oci.Mount             `json:"defaultMounts"`
+	PrivilegedMounts []oci.Mount             `json:"privilegedMounts"`
+}
+
+const (
+	numBenchmarkContainers               = maxContainersInGeneratedPolicy / 2
+	numLayersInBenchmarkContainer        = maxLayersInGeneratedContainer / 2
+	numBenchmarkCommandArgs              = maxGeneratedCommandArgs / 2
+	numBenchmarkMounts                   = maxGeneratedMounts / 2
+	numBenchmarkMountOptions             = maxGeneratedMountOptions / 2
+	numBenchmarkEnvironmentVariableRules = maxGeneratedEnvironmentVariableRules / 2
+)
+
+func generateBenchmarkStringArray(r *rand.Rand, count int, maxLength int32) []string {
+	result := make([]string, count)
+	for i := 0; i < count; i++ {
+		result[i] = randVariableString(r, maxLength)
+	}
+	return result
+}
+
+func generateBenchmarkEnvironmentVariableRules(r *rand.Rand) []EnvRuleConfig {
+	rules := make([]EnvRuleConfig, numBenchmarkEnvironmentVariableRules)
+
+	for i := 0; i < numBenchmarkEnvironmentVariableRules; i++ {
+		rules[i] = EnvRuleConfig{
+			Strategy: "string",
+			Rule:     randVariableString(r, maxGeneratedEnvironmentVariableRuleLength),
+		}
+	}
+
+	return rules
+}
+
+func generateBenchmarkMounts(r *rand.Rand) []mountInternal {
+	mounts := make([]mountInternal, numBenchmarkMounts)
+	for i := 0; i < numBenchmarkMounts; i++ {
+		options := generateBenchmarkStringArray(r, numBenchmarkMountOptions, maxGeneratedMountOptionLength)
+		source_prefix := ""
+		// select a "source type". our default is "no special prefix" ie a
+		// "standard source".
+		prefix_type := randMinMax(r, 1, 3)
+		if prefix_type == 2 {
+			// sandbox mount, gets special handling
+			source_prefix = guestpath.SandboxMountPrefix
+		} else if prefix_type == 3 {
+			// huge page mount, gets special handling
+			source_prefix = guestpath.HugePagesMountPrefix
+		}
+
+		source := source_prefix + randVariableString(r, maxGeneratedMountSourceLength)
+		destination := randVariableString(r, maxGeneratedMountDestinationLength)
+
+		mounts[i] = mountInternal{
+			Source:      source,
+			Destination: destination,
+			Options:     options,
+			Type:        "bind",
+		}
+	}
+
+	return mounts
+}
+
+func generateBenchmarkContainer(r *rand.Rand) *securityPolicyContainer {
+	c := new(securityPolicyContainer)
+	c.Command = generateBenchmarkStringArray(r, numBenchmarkCommandArgs, maxGeneratedCommandLength)
+	c.EnvRules = generateBenchmarkEnvironmentVariableRules(r)
+	c.WorkingDir = randVariableString(r, maxGeneratedCommandLength)
+	c.Mounts = generateBenchmarkMounts(r)
+	c.Layers = make([]string, numLayersInBenchmarkContainer)
+	for i := 0; i < numLayersInBenchmarkContainer; i++ {
+		c.Layers[i] = generateRootHash(r)
+	}
+	return c
+}
+
+func generateBenchmarkContainers(r *rand.Rand) *generatedContainers {
+	p := new(generatedContainers)
+	p.containers = make([]*securityPolicyContainer, numBenchmarkContainers)
+	for i := 0; i < numBenchmarkContainers; i++ {
+		p.containers[i] = generateBenchmarkContainer(r)
+	}
+
+	return p
+}
+
+func setupBenchmarks(b *testing.B) []benchmarkConfig {
+	seed := rand.NewSource(20220818)
+	benchmarkRand := rand.New(seed)
+	configs := make([]benchmarkConfig, b.N)
+	for i := 0; i < b.N; i++ {
+		p := generateBenchmarkContainers(benchmarkRand)
+		configs[i] = benchmarkConfig{
+			p,
+			newSecurityPolicyInternal(p.containers),
+			toOCIMounts(generateBenchmarkMounts(benchmarkRand)),
+			toOCIMounts(generateBenchmarkMounts(benchmarkRand)),
+		}
+	}
+
+	return configs
+}
+
+func Benchmark_PolicyCompilation(b *testing.B) {
+	configs := setupBenchmarks(b)
+	b.ResetTimer()
+	for _, config := range configs {
+		_, err := newRegoPolicyFromInternal(config.Policy, config.DefaultMounts, config.PrivilegedMounts)
+		if err != nil {
+			b.Errorf("unable to convert policy to rego: %v", err)
+		}
+	}
+}
+
+func Benchmark_Rego_EnforceDeviceMountPolicy(b *testing.B) {
+	configs := setupBenchmarks(b)
+	b.ResetTimer()
+	for _, config := range configs {
+		policy, err := newRegoPolicyFromInternal(config.Policy, config.DefaultMounts, config.PrivilegedMounts)
+
+		if err != nil {
+			b.Error(err)
+			b.Skip()
+		}
+
+		target := testDataGenerator.uniqueMountTarget()
+		rootHash := selectRootHashFromContainers(config.Containers, testRand)
+
+		err = policy.EnforceDeviceMountPolicy(target, rootHash)
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func Benchmark_Rego_EnforceOverlayMountPolicy(b *testing.B) {
+	configs := setupBenchmarks(b)
+	b.ResetTimer()
+	for _, config := range configs {
+		tc, err := setupRegoOverlayTest(config.Containers, true)
+		if err != nil {
+			b.Error(err)
+			b.Skip()
+		}
+
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers)
+
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
+
+func Benchmark_Rego_EnforceCreateContainer(b *testing.B) {
+	configs := setupBenchmarks(b)
+	b.ResetTimer()
+	for _, config := range configs {
+		tc, err := setupSimpleRegoCreateContainerTest(config.Containers)
+		if err != nil {
+			b.Error(err)
+			b.Skip()
+		}
+
+		err = tc.policy.EnforceCreateContainerPolicy(tc.containerID, tc.argList, tc.envList, tc.workingDir, tc.sandboxID, tc.mounts)
+
+		if err != nil {
+			b.Error(err)
+		}
+	}
+}
 
 // Validate we do our conversion from Json to rego correctly
 func Test_MarshalRego(t *testing.T) {

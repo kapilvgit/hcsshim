@@ -30,12 +30,34 @@ var FrameworkCode string
 //go:embed policy.rego
 var PolicyCode string
 
+var CompiledModules *ast.Compiler
+
+func compileFramework(printEnabled bool) (*ast.Compiler, error) {
+	if CompiledModules == nil {
+		modules := map[string]string{
+			"policy.rego":    PolicyCode,
+			"framework.rego": FrameworkCode,
+		}
+		opts := ast.CompileOpts{
+			EnablePrintStatements: printEnabled,
+		}
+		var err error
+		CompiledModules, err = ast.CompileModulesWithOpt(modules, opts)
+		if err != nil {
+			CompiledModules = nil
+			return nil, err
+		}
+	}
+
+	return CompiledModules, nil
+}
+
 var Indent string = "    "
 
 type RegoPolicy struct {
 	// Rego which describes policy behavior (see above)
 	behavior string
-	// Rego which describes policy objects (containers, etc.)
+	// Rego which describes policy objects
 	objects string
 	// Mutex to prevent concurrent access to fields
 	mutex *sync.Mutex
@@ -48,8 +70,8 @@ type RegoPolicy struct {
 }
 
 type securityPolicyInternal struct {
-	AllowAll   bool
-	Containers []*securityPolicyContainer
+	AllowAll   bool                       `json: "allow_all"`
+	Containers []*securityPolicyContainer `json: "containers"`
 }
 
 func (sp SecurityPolicy) toInternal() (*securityPolicyInternal, error) {
@@ -223,6 +245,57 @@ func (p securityPolicyInternal) MarshalRego() (string, error) {
 	return builder.String(), nil
 }
 
+type RegoData map[string]interface{}
+
+func (e EnvRuleConfig) MarshalData() RegoData {
+	return RegoData{
+		"pattern":  e.Rule,
+		"strategy": string(e.Strategy),
+	}
+}
+
+func (m mountInternal) MarshalData() RegoData {
+	return RegoData{
+		"options":     m.Options,
+		"source":      m.Source,
+		"destination": m.Destination,
+		"type":        m.Type,
+	}
+}
+
+func (p securityPolicyContainer) MarshalData() RegoData {
+	envRules := make([]RegoData, len(p.EnvRules))
+	for i, env := range p.EnvRules {
+		envRules[i] = env.MarshalData()
+	}
+
+	mounts := make([]RegoData, len(p.Mounts))
+	for i, mount := range p.Mounts {
+		mounts[i] = mount.MarshalData()
+	}
+
+	return RegoData{
+		"command":        p.Command,
+		"env_rules":      envRules,
+		"layers":         p.Layers,
+		"mounts":         mounts,
+		"working_dir":    p.WorkingDir,
+		"allow_elevated": p.AllowElevated,
+	}
+}
+
+func (p securityPolicyInternal) MarshalData() RegoData {
+	containers := make([]RegoData, len(p.Containers))
+	for i, container := range p.Containers {
+		containers[i] = container.MarshalData()
+	}
+
+	return RegoData{
+		"allow_all":  p.AllowAll,
+		"containers": containers,
+	}
+}
+
 func NewRegoPolicyFromBase64Json(base64policy string, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) (*RegoPolicy, error) {
 	securityPolicy := new(SecurityPolicy)
 	if jsonPolicy, err := base64.StdEncoding.DecodeString(base64policy); err == nil {
@@ -252,26 +325,27 @@ func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMoun
 func newRegoPolicyFromInternal(securityPolicy *securityPolicyInternal, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) (*RegoPolicy, error) {
 	policy := new(RegoPolicy)
 	policy.behavior = PolicyCode
-	if code, err := securityPolicy.MarshalRego(); err == nil {
-		policy.objects = code
-	} else {
-		return nil, fmt.Errorf("failed to convert json to rego: %w", err)
-	}
-
 	policy.data = map[string]interface{}{
 		"started":         []string{},
 		"defaultMounts":   []interface{}{},
 		"sandboxPrefix":   guestpath.SandboxMountPrefix,
 		"hugePagesPrefix": guestpath.HugePagesMountPrefix,
 	}
-	policy.mutex = new(sync.Mutex)
-	policy.base64policy = ""
 
 	modules := map[string]string{
-		"behavior.rego":  policy.behavior,
-		"objects.rego":   policy.objects,
+		"policy.rego":    PolicyCode,
 		"framework.rego": FrameworkCode,
 	}
+
+	if code, err := securityPolicy.MarshalRego(); err == nil {
+		modules["objects.rego"] = code
+		policy.objects = code
+	} else {
+		return nil, err
+	}
+
+	policy.mutex = new(sync.Mutex)
+	policy.base64policy = ""
 
 	policy.ExtendDefaultMounts(defaultMounts)
 	policy.ExtendDefaultMounts(privilegedMounts)
@@ -279,11 +353,13 @@ func newRegoPolicyFromInternal(securityPolicy *securityPolicyInternal, defaultMo
 	// TODO temporary hack for debugging policies until GCS logging design
 	// and implementation is finalized. This option should be changed to
 	// "true" if debugging is desired.
-	options := ast.CompileOpts{
-		EnablePrintStatements: false,
+	debug := false
+
+	opts := ast.CompileOpts{
+		EnablePrintStatements: debug,
 	}
 
-	if compiled, err := ast.CompileModulesWithOpt(modules, options); err == nil {
+	if compiled, err := ast.CompileModulesWithOpt(modules, opts); err == nil {
 		policy.compiledModules = compiled
 	} else {
 		return nil, fmt.Errorf("rego compilation failed: %w", err)
@@ -307,8 +383,6 @@ func (policy RegoPolicy) Query(input map[string]interface{}) (rego.ResultSet, er
 	ctx := context.Background()
 	results, err := query.Eval(ctx)
 	if err != nil {
-		fmt.Println("Policy", policy.objects)
-		fmt.Println(err)
 		return results, err
 	}
 

@@ -50,10 +50,10 @@ func NewSecurityPolicyEnforcer(state SecurityPolicyState, eOpts ...standardEnfor
 }
 
 type mountInternal struct {
-	Source      string
-	Destination string
-	Type        string
-	Options     []string
+	Source      string   `json:"source"`
+	Destination string   `json:"destination"`
+	Type        string   `json:"type"`
+	Options     []string `json:"options"`
 }
 
 // newMountConstraint creates an internal mount constraint object from given
@@ -94,23 +94,21 @@ func WithPrivilegedMounts(mounts []oci.Mount) standardEnforcerOpt {
 // Internal version of Container
 type securityPolicyContainer struct {
 	// The command that we will allow the container to execute
-	Command []string
+	Command []string `json:"command"`
 	// The rules for determining if a given environment variable is allowed
-	EnvRules []EnvRuleConfig
+	EnvRules []EnvRuleConfig `json:"env_rules"`
 	// An ordered list of dm-verity root hashes for each layer that makes up
 	// "a container". Containers are constructed as an overlay file system. The
 	// order that the layers are overlayed is important and needs to be enforced
 	// as part of policy.
-	Layers []string
+	Layers []string `json:"layers"`
 	// WorkingDir is a path to container's working directory, which all the processes
 	// will default to.
-	WorkingDir string
-	// Unordered list of mounts which are expected to be present when the container
-	// starts
-	WaitMountPoints []string
+	WorkingDir string `json:"working_dir"`
 	// A list of constraints for determining if a given mount is allowed.
-	Mounts        []mountInternal
-	AllowElevated bool
+	Mounts          []mountInternal `json:"mounts"`
+	WaitMountPoints []string        `json:"wait_mount_points"`
+	AllowElevated   bool            `json:"allow_elevated"`
 }
 
 // StandardSecurityPolicyEnforcer implements SecurityPolicyEnforcer interface

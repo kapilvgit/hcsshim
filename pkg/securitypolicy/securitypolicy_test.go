@@ -1219,5 +1219,5 @@ func atMost(r *rand.Rand, most int32) int32 {
 
 // a type to hold a list of generated containers
 type generatedContainers struct {
-	containers []*securityPolicyContainer
+	containers []*securityPolicyContainer `json:"containers"`
 }
