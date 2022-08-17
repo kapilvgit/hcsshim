@@ -47,6 +47,21 @@ type RegoPolicy struct {
 	compiledModules *ast.Compiler
 }
 
+type securityPolicyInternal struct {
+	AllowAll   bool
+	Containers []*securityPolicyContainer
+}
+
+func (sp SecurityPolicy) toInternal() (*securityPolicyInternal, error) {
+	policy := new(securityPolicyInternal)
+	var err error
+	if policy.Containers, err = sp.Containers.toInternal(); err != nil {
+		return nil, err
+	}
+
+	return policy, nil
+}
+
 func toOptions(values []string) Options {
 	elements := make(map[string]string)
 	for i, value := range values {
@@ -72,110 +87,65 @@ func (mounts *Mounts) Append(other []oci.Mount) {
 	mounts.Length += len(other)
 }
 
-func (array StringArrayMap) MarshalRego() (string, error) {
-	values := make([]string, array.Length)
-	for i := 0; i < array.Length; i++ {
-		if value, found := array.Elements[fmt.Sprint(i)]; found {
-			values[i] = fmt.Sprintf("\"%s\"", value)
-		} else {
-			return "", fmt.Errorf("\"%d\" missing from elements", i)
-		}
+type StringArray []string
+
+func (array StringArray) MarshalRego() string {
+	values := make([]string, len(array))
+	for i, value := range array {
+		values[i] = fmt.Sprintf("\"%s\"", value)
 	}
 
-	return fmt.Sprintf("[%s]", strings.Join(values, ",")), nil
+	return fmt.Sprintf("[%s]", strings.Join(values, ","))
 }
 
-func writeCommand(builder *strings.Builder, command CommandArgs, indent string) error {
-	array, err := (StringArrayMap(command)).MarshalRego()
-	if err != nil {
-		return err
-	}
-
-	if _, err := builder.WriteString(fmt.Sprintf("%s\"command\": %s,\n", indent, array)); err != nil {
-		return err
-	}
-
-	return nil
+func writeCommand(builder *strings.Builder, command []string, indent string) error {
+	array := (StringArray(command)).MarshalRego()
+	_, err := builder.WriteString(fmt.Sprintf("%s\"command\": %s,\n", indent, array))
+	return err
 }
 
 func (e EnvRuleConfig) MarshalRego() string {
 	return fmt.Sprintf("{\"pattern\": \"%s\", \"strategy\": \"%s\"}", e.Rule, e.Strategy)
 }
 
-func (e EnvRules) MarshalRego() (string, error) {
-	values := make([]string, e.Length)
-	for i := 0; i < e.Length; i++ {
-		if value, found := e.Elements[fmt.Sprint(i)]; found {
-			values[i] = value.MarshalRego()
-		} else {
-			return "", fmt.Errorf("\"%d\" missing from env rules elements", i)
-		}
+type EnvRuleArray []EnvRuleConfig
+
+func (array EnvRuleArray) MarshalRego() string {
+	values := make([]string, len(array))
+	for i, env := range array {
+		values[i] = env.MarshalRego()
 	}
 
-	return fmt.Sprintf("[%s]", strings.Join(values, ",")), nil
+	return fmt.Sprintf("[%s]", strings.Join(values, ","))
 }
 
-func writeEnvRules(builder *strings.Builder, envRules EnvRules, indent string) error {
-	array, err := envRules.MarshalRego()
-
-	if err != nil {
-		return err
-	}
-
-	_, err = builder.WriteString(fmt.Sprintf("%s\"env_rules\": %s,\n", indent, array))
+func writeEnvRules(builder *strings.Builder, envRules []EnvRuleConfig, indent string) error {
+	_, err := builder.WriteString(fmt.Sprintf("%s\"env_rules\": %s,\n", indent, EnvRuleArray(envRules).MarshalRego()))
 	return err
 }
 
-func writeLayers(builder *strings.Builder, layers Layers, indent string) error {
-	array, err := (StringArrayMap(layers)).MarshalRego()
-	if err != nil {
-		return err
-	}
-
-	if _, err := builder.WriteString(fmt.Sprintf("%s\"layers\": %s,\n", indent, array)); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (m Mount) MarshalRego() (string, error) {
-	options, err := StringArrayMap(m.Options).MarshalRego()
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("{\"destination\": \"%s\", \"options\": %s, \"source\": \"%s\", \"type\": \"%s\"}", m.Destination, options, m.Source, m.Type), nil
-}
-
-func (m Mounts) MarshalRego() (string, error) {
-	values := make([]string, m.Length)
-	for i := 0; i < m.Length; i++ {
-		if value, found := m.Elements[fmt.Sprint(i)]; found {
-			if mount, err := value.MarshalRego(); err == nil {
-				values[i] = mount
-			} else {
-				return "", err
-			}
-		} else {
-			return "", fmt.Errorf("\"%d\" missing from mounts elements", i)
-		}
-	}
-
-	return fmt.Sprintf("[%s]", strings.Join(values, ",")), nil
-}
-
-func writeMounts(builder *strings.Builder, mounts Mounts, indent string) error {
-	array, err := mounts.MarshalRego()
-
-	if err != nil {
-		return err
-	}
-
-	_, err = builder.WriteString(fmt.Sprintf("%s\"mounts\": %s,\n", indent, array))
+func writeLayers(builder *strings.Builder, layers []string, indent string) error {
+	array := (StringArray(layers)).MarshalRego()
+	_, err := builder.WriteString(fmt.Sprintf("%s\"layers\": %s,\n", indent, array))
 	return err
 }
 
-func writeContainer(builder *strings.Builder, container Container, indent string) error {
+func (m mountInternal) MarshalRego() string {
+	options := StringArray(m.Options).MarshalRego()
+	return fmt.Sprintf("{\"destination\": \"%s\", \"options\": %s, \"source\": \"%s\", \"type\": \"%s\"}", m.Destination, options, m.Source, m.Type)
+}
+
+func writeMounts(builder *strings.Builder, mounts []mountInternal, indent string) error {
+	values := make([]string, len(mounts))
+	for i, mount := range mounts {
+		values[i] = mount.MarshalRego()
+	}
+
+	_, err := builder.WriteString(fmt.Sprintf("%s\"mounts\": [%s],\n", indent, strings.Join(values, ",")))
+	return err
+}
+
+func writeContainer(builder *strings.Builder, container *securityPolicyContainer, indent string) error {
 	if _, err := builder.WriteString(fmt.Sprintf("%s{\n", indent)); err != nil {
 		return err
 	}
@@ -211,29 +181,25 @@ func writeContainer(builder *strings.Builder, container Container, indent string
 	return nil
 }
 
-func addContainers(builder *strings.Builder, containers Containers) error {
+func addContainers(builder *strings.Builder, containers []*securityPolicyContainer) error {
 	if _, err := builder.WriteString("containers := [\n"); err != nil {
 		return err
 	}
 
-	for i := 0; i < containers.Length; i++ {
-		if container, found := containers.Elements[fmt.Sprint(i)]; found {
-			if err := writeContainer(builder, container, Indent); err != nil {
-				return err
-			}
+	for i, container := range containers {
+		if err := writeContainer(builder, container, Indent); err != nil {
+			return err
+		}
 
-			var end string
-			if i < containers.Length-1 {
-				end = ",\n"
-			} else {
-				end = "\n"
-			}
-
-			if _, err := builder.WriteString(end); err != nil {
-				return err
-			}
+		var end string
+		if i < len(containers)-1 {
+			end = ",\n"
 		} else {
-			return fmt.Errorf("\"%d\" missing from containers elements", i)
+			end = "\n"
+		}
+
+		if _, err := builder.WriteString(end); err != nil {
+			return err
 		}
 	}
 
@@ -244,7 +210,7 @@ func addContainers(builder *strings.Builder, containers Containers) error {
 	return nil
 }
 
-func (p SecurityPolicy) MarshalRego() (string, error) {
+func (p securityPolicyInternal) MarshalRego() (string, error) {
 	builder := new(strings.Builder)
 	if _, err := builder.WriteString(fmt.Sprintf("package policy\nallow_all := %v\n", p.AllowAll)); err != nil {
 		return "", err
@@ -276,6 +242,14 @@ func NewRegoPolicyFromBase64Json(base64policy string, defaultMounts []oci.Mount,
 }
 
 func NewRegoPolicyFromSecurityPolicy(securityPolicy *SecurityPolicy, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) (*RegoPolicy, error) {
+	if policy, err := securityPolicy.toInternal(); err == nil {
+		return newRegoPolicyFromInternal(policy, defaultMounts, privilegedMounts)
+	} else {
+		return nil, fmt.Errorf("error converting to internal format: %w", err)
+	}
+}
+
+func newRegoPolicyFromInternal(securityPolicy *securityPolicyInternal, defaultMounts []oci.Mount, privilegedMounts []oci.Mount) (*RegoPolicy, error) {
 	policy := new(RegoPolicy)
 	policy.behavior = PolicyCode
 	if code, err := securityPolicy.MarshalRego(); err == nil {

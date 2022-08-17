@@ -44,8 +44,8 @@ func Test_MarshalRego(t *testing.T) {
 // return an error when there's no matching root hash in the policy
 func Test_Rego_EnforceDeviceMountPolicy_No_Matches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p.containers)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		securityPolicy := newSecurityPolicyInternal(p.containers)
+		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
 		}
@@ -68,8 +68,8 @@ func Test_Rego_EnforceDeviceMountPolicy_No_Matches(t *testing.T) {
 // return an error when there's a matching root hash in the policy
 func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p.containers)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		securityPolicy := newSecurityPolicyInternal(p.containers)
+		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
 		}
@@ -90,8 +90,8 @@ func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
 
 func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p.containers)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		securityPolicy := newSecurityPolicyInternal(p.containers)
+		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Error(err)
 			return false
@@ -123,8 +123,8 @@ func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
 
 func Test_Rego_EnforceDeviceMountPolicy_Duplicate_Device_Target(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p.containers)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		securityPolicy := newSecurityPolicyInternal(p.containers)
+		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
 		}
@@ -205,8 +205,8 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_With_Same_Root_Hash(t *testing.T
 	numLayers := len(container.Layers)
 	container.Layers[numLayers-2] = container.Layers[numLayers-1]
 
-	securityPolicy := securityPolicyFromInternal([]*securityPolicyContainer{container})
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	securityPolicy := newSecurityPolicyInternal([]*securityPolicyContainer{container})
+	policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 	if err != nil {
 		t.Fatal("Unable to create security policy")
 	}
@@ -238,8 +238,8 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_Shared_Layers(t *testing.T) {
 	containerTwo.Layers[sharedLayerIndex] = containerOne.Layers[sharedLayerIndex]
 	containers := []*securityPolicyContainer{containerOne, containerTwo}
 
-	securityPolicy := securityPolicyFromInternal(containers)
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	securityPolicy := newSecurityPolicyInternal(containers)
+	policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 	if err != nil {
 		t.Fatal("Unable to create security policy")
 	}
@@ -340,11 +340,11 @@ func Test_Rego_EnforceOverlayMountPolicy_Reusing_ID_Across_Overlays(t *testing.T
 		containers = append(containers, generateContainersContainer(testRand, 1, maxLayersInGeneratedContainer))
 	}
 
-	securityPolicy := securityPolicyFromInternal(containers)
+	securityPolicy := newSecurityPolicyInternal(containers)
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
 
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+	policy, err := newRegoPolicyFromInternal(securityPolicy,
 		toOCIMounts(defaultMounts),
 		toOCIMounts(privilegedMounts))
 	if err != nil {
@@ -395,8 +395,8 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 			containers = append(containers, c)
 		}
 
-		securityPolicy := securityPolicyFromInternal(containers)
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+		securityPolicy := newSecurityPolicyInternal(containers)
+		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Fatalf("failed create enforcer")
 		}
@@ -539,11 +539,11 @@ func Test_Rego_EnforceCreateContainer(t *testing.T) {
 
 func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
 	f := func(p *generatedContainers) bool {
-		securityPolicy := securityPolicyFromInternal(p.containers)
+		securityPolicy := newSecurityPolicyInternal(p.containers)
 		defaultMounts := generateMounts(testRand)
 		privilegedMounts := generateMounts(testRand)
 
-		policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+		policy, err := newRegoPolicyFromInternal(securityPolicy,
 			toOCIMounts(defaultMounts),
 			toOCIMounts(privilegedMounts))
 		if err != nil {
@@ -885,6 +885,13 @@ func newMountsFromInternal(mountsInternal []mountInternal) Mounts {
 	return mounts
 }
 
+func newSecurityPolicyInternal(containers []*securityPolicyContainer) *securityPolicyInternal {
+	securityPolicy := new(securityPolicyInternal)
+	securityPolicy.AllowAll = false
+	securityPolicy.Containers = containers
+	return securityPolicy
+}
+
 func securityPolicyFromInternal(containers []*securityPolicyContainer) *SecurityPolicy {
 	securityPolicy := new(SecurityPolicy)
 	securityPolicy.AllowAll = false
@@ -952,8 +959,8 @@ type regoOverlayTestConfig struct {
 }
 
 func setupRegoOverlayTest(gc *generatedContainers, valid bool) (tc *regoOverlayTestConfig, err error) {
-	securityPolicy := securityPolicyFromInternal(gc.containers)
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy, []oci.Mount{}, []oci.Mount{})
+	securityPolicy := newSecurityPolicyInternal(gc.containers)
+	policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 	if err != nil {
 		return nil, err
 	}
@@ -998,11 +1005,11 @@ func setupSimpleRegoCreateContainerTest(gc *generatedContainers) (tc *regoContai
 }
 
 func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securityPolicyContainer) (tc *regoContainerTestConfig, err error) {
-	securityPolicy := securityPolicyFromInternal(gc.containers)
+	securityPolicy := newSecurityPolicyInternal(gc.containers)
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
 
-	policy, err := NewRegoPolicyFromSecurityPolicy(securityPolicy,
+	policy, err := newRegoPolicyFromInternal(securityPolicy,
 		toOCIMounts(defaultMounts),
 		toOCIMounts(privilegedMounts))
 	if err != nil {
