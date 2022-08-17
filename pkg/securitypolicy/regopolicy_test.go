@@ -1065,6 +1065,7 @@ func newDataGenerator(rng *rand.Rand) *dataGenerator {
 		rng:          rng,
 		mountTargets: map[string]struct{}{},
 		containerIDs: map[string]struct{}{},
+		sandboxIDs:   map[string]struct{}{},
 	}
 }
 
