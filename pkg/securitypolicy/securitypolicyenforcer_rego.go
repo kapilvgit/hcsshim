@@ -144,6 +144,21 @@ func writeLayers(builder *strings.Builder, layers []string, indent string) error
 	return err
 }
 
+func (p containerProcess) MarshalRego() string {
+	command := StringArray(p.command).MarshalRego()
+	envRules := EnvRuleArray(p.envRules).MarshalRego()
+	return fmt.Sprintf("{\"command\": %s, \"env_rules\": %s, \"working_dir\": \"%s\"}", command, envRules, p.workingDir)
+}
+
+func writeExecProcesses(builder *strings.Builder, execProcesses []containerProcess, indent string) error {
+	values := make([]string, len(execProcesses))
+	for i, process := range execProcesses {
+		values[i] = process.MarshalRego()
+	}
+	_, err := builder.WriteString(fmt.Sprintf("%s\"exec_processes\": [%s],\n", indent, strings.Join(values, ",")))
+	return err
+}
+
 func (m mountInternal) MarshalRego() string {
 	options := StringArray(m.Options).MarshalRego()
 	return fmt.Sprintf("{\"destination\": \"%s\", \"options\": %s, \"source\": \"%s\", \"type\": \"%s\"}", m.Destination, options, m.Source, m.Type)
@@ -177,6 +192,10 @@ func writeContainer(builder *strings.Builder, container *securityPolicyContainer
 	}
 
 	if err := writeMounts(builder, container.Mounts, indent+Indent); err != nil {
+		return err
+	}
+
+	if err := writeExecProcesses(builder, container.ExecProcesses, indent+Indent); err != nil {
 		return err
 	}
 
@@ -443,6 +462,9 @@ func (policy *RegoEnforcer) EnforceCreateContainerPolicy(containerID string,
 		containerInfo["argList"] = argList
 		containerInfo["envList"] = envList
 		containerInfo["workingDir"] = workingDir
+		containerInfo["sandboxDir"] = input["sandboxDir"]
+		containerInfo["hugePagesDir"] = input["hugePagesDir"]
+		containerInfo["mounts"] = mounts
 		return nil
 	} else {
 		input["name"] = "reason"
@@ -489,4 +511,57 @@ func (policy *RegoEnforcer) ExtendDefaultMounts(mounts []oci.Mount) error {
 
 func (policy *RegoEnforcer) EncodedSecurityPolicy() string {
 	return policy.base64policy
+}
+
+func (policy *RegoEnforcer) EnforceExecInContainerPolicy(containerID string, argList []string, envList []string, workingDir string) error {
+	policy.mutex.Lock()
+	defer policy.mutex.Unlock()
+
+	// first, we need to obtain the overlay filestytem information
+	// which was stored in EnforceOverlayMountPolicy
+	var containerInfo map[string]interface{}
+	if containers, found := policy.data["containers"]; found {
+		containerMap := containers.(map[string]interface{})
+		if container, found := containerMap[containerID]; found {
+			containerInfo = container.(map[string]interface{})
+		} else {
+			return fmt.Errorf("container %s not started", containerID)
+		}
+	} else {
+		return fmt.Errorf("container %s not started", containerID)
+	}
+
+	input := make(map[string]interface{})
+
+	// this adds the overlay layerPaths array to the input
+	for key, value := range containerInfo {
+		input[key] = value
+	}
+
+	input["name"] = "exec_in_container"
+	input["argList"] = argList
+	input["envList"] = envList
+	input["workingDir"] = workingDir
+
+	result, err := policy.Query(input)
+	if err != nil {
+		return err
+	}
+
+	if result.Allowed() {
+		return nil
+	} else {
+		input["name"] = "reason"
+		input["rule"] = "exec_in_container"
+		result, err := policy.Query(input)
+		if err != nil {
+			return err
+		}
+
+		reasons := []string{}
+		for _, reason := range result[0].Expressions[0].Value.([]interface{}) {
+			reasons = append(reasons, reason.(string))
+		}
+		return fmt.Errorf("exec in container not allowed by policy. Reasons: [%s]", strings.Join(reasons, ","))
+	}
 }

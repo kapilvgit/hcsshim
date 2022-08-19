@@ -23,43 +23,55 @@ mount_overlay := true {
 	data.policy.allow_all
 }
 
-default container_started := false
-container_started := true {
-	input.containerID in data.started
-}
-
 default create_container := false
 create_container := true {
     data.framework.create_container
 }
-
 
 create_container := true {
     count(data.policy.containers) == 0
 	data.policy.allow_all
 }
 
-default mount := false
-mount := true {
-    data.framework.mount
+default exec_in_container := false
+exec_in_container := true {
+	data.framework.exec_in_container
 }
 
-mount := true {
-    count(data.policy.containers) == 0
-    data.policy.allow_all
+exec_in_container := true {
+	count(data.policy.containers) == 0
+	data.policy.allow_all
 }
 
 # error messages
+
+default container_started := false
+container_started := true {
+	input.containerID in data.started
+}
 
 reason["container already started"] {
 	input.rule == "create_container"
 	container_started
 }
 
+reason["container not started"] {
+	input.rule == "exec_in_container"
+	not container_started
+}
+
 default command_matches := false
 command_matches := true {
+	input.rule == "create_container"
 	some container in data.policy.containers
-	data.framework.command_ok(container)
+	data.framework.command_ok(container.command)
+}
+
+command_matches := true {
+	input.rule == "exec_in_container"
+	some container in data.policy.containers
+	some process in container.exec_processes
+	data.framework.command_ok(process.command)
 }
 
 reason["invalid command"] {
@@ -68,8 +80,16 @@ reason["invalid command"] {
 
 default envList_matches := false
 envList_matches := true {
+	input.rule == "create_container"
 	some container in data.policy.containers
-	data.framework.envList_ok(container)
+	data.framework.envList_ok(container.env_rules)
+}
+
+envList_matches := true {
+	input.rule == "exec_in_container"
+	some container in data.policy.containers
+	some process in container.exec_processes
+	data.framework.envList_ok(process.env_rules)
 }
 
 reason["invalid env list"] {
@@ -78,8 +98,16 @@ reason["invalid env list"] {
 
 default workingDirectory_matches := false
 workingDirectory_matches := true {
+	input.rule == "create_container"
 	some container in data.policy.containers
-	data.framework.workingDirectory_ok(container)
+	data.framework.workingDirectory_ok(container.working_dir)
+}
+
+workingDirectory_matches := true {
+	input.rule == "exec_in_container"
+	some container in data.policy.containers
+	some process in container.exec_processes
+	data.framework.workingDirectory_ok(process.working_dir)
 }
 
 reason["invalid working directory"] {
@@ -89,7 +117,7 @@ reason["invalid working directory"] {
 default mountList_matches := false
 mountList_matches := true {
 	some container in data.policy.containers
-	data.framework.mountList_ok(container)
+	data.framework.mountList_ok(container.mounts)
 }
 
 reason["invalid mount list"] {

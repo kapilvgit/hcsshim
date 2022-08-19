@@ -10,24 +10,24 @@ mount_device := true {
     input.deviceHash == layer
 }
 
-layerPaths_ok(container) {
-    length := count(container.layers)
+layerPaths_ok(layers) {
+    length := count(layers)
     count(input.layerPaths) == length
     every i, path in input.layerPaths {
-        container.layers[length - i - 1] == data.devices[path]
+        layers[length - i - 1] == data.devices[path]
     }
 }
 
 default mount_overlay := false
 mount_overlay := true {
     some container in data.policy.containers
-    layerPaths_ok(container)
+    layerPaths_ok(container.layers)
 }
 
-command_ok(container) {
-    count(input.argList) == count(container.command)
+command_ok(command) {
+    count(input.argList) == count(command)
     every i, arg in input.argList {
-        container.command[i] == arg
+        command[i] == arg
     }
 }
 
@@ -39,26 +39,15 @@ env_ok(pattern, "re2", value) {
     regex.match(pattern, value)
 }
 
-envList_ok(container) {
+envList_ok(env_rules) {
     every env in input.envList {
-        some rule in container.env_rules
+        some rule in env_rules
         env_ok(rule.pattern, rule.strategy, env)
     }
 }
 
-workingDirectory_ok(container) {
-    input.workingDir == container.working_dir
-}
-
-default create_container := false
-create_container := true {
-	not input.containerID in data.started
-    some container in data.policy.containers
-    layerPaths_ok(container)
-    command_ok(container)
-    envList_ok(container)
-    workingDirectory_ok(container)
-    mountList_ok(container)
+workingDirectory_ok(working_dir) {
+    input.workingDir == working_dir
 }
 
 mountSource_ok(constraint, source) {
@@ -92,18 +81,41 @@ mountConstraint_ok(constraint, mount) {
     }
 }
 
-mount_ok(container, mount) {
-    some constraint in container.mounts
+mount_ok(mounts, mount) {
+    some constraint in mounts
     mountConstraint_ok(constraint, mount)
 }
 
-mount_ok(container, mount) {
+mount_ok(mounts, mount) {
     some constraint in data.defaultMounts
     mountConstraint_ok(constraint, mount)
 }
 
-mountList_ok(container) {
+mountList_ok(mounts) {
     every mount in input.mounts {
-        mount_ok(container, mount)
+        mount_ok(mounts, mount)
     }
+}
+
+default create_container := false
+create_container := true {
+	not input.containerID in data.started
+    some container in data.policy.containers
+    layerPaths_ok(container.layers)
+    command_ok(container.command)
+    envList_ok(container.env_rules)
+    workingDirectory_ok(container.working_dir)
+    mountList_ok(container.mounts)
+}
+
+default exec_in_container := false
+exec_in_container := true {
+    input.containerID in data.started
+    some container in data.policy.containers
+    layerPaths_ok(container.layers)
+    mountList_ok(container.mounts)
+    some process in container.exec_processes
+    command_ok(process.command)
+    envList_ok(process.env_rules)
+    workingDirectory_ok(process.working_dir)
 }

@@ -41,6 +41,7 @@ type SecurityPolicyEnforcer interface {
 	EnforceCreateContainerPolicy(containerID string, argList []string, envList []string, workingDir string, sandboxID string, mounts []oci.Mount) (err error)
 	ExtendDefaultMounts([]oci.Mount) error
 	EncodedSecurityPolicy() string
+	EnforceExecInContainerPolicy(containerID string, argList []string, envList []string, workingDir string) error
 }
 
 // createAllowAllEnforcer creates and returns OpenDoorSecurityPolicyEnforcer instance.
@@ -163,6 +164,15 @@ type securityPolicyContainer struct {
 	// A list of constraints for determining if a given mount is allowed.
 	Mounts        []mountInternal
 	AllowElevated bool
+	// A list of lists of commands that can be used to execute additional
+	// processes within the container
+	ExecProcesses []containerProcess
+}
+
+type containerProcess struct {
+	command    []string
+	envRules   []EnvRuleConfig
+	workingDir string
 }
 
 // StandardSecurityPolicyEnforcer implements SecurityPolicyEnforcer interface
@@ -557,6 +567,12 @@ func (pe *StandardSecurityPolicyEnforcer) EnforceCreateContainerPolicy(
 	return nil
 }
 
+// Stub. We are deprecating the standard enforcer. Newly added enforcement
+// points are simply allowed.
+func (*StandardSecurityPolicyEnforcer) EnforceExecInContainerPolicy(_ string, _ []string, _ []string, _ string) error {
+	return nil
+}
+
 func (pe *StandardSecurityPolicyEnforcer) enforceCommandPolicy(containerID string, argList []string) (err error) {
 	// Get a list of all the indexes into our security policy's list of
 	// containers that are possible matches for this containerID based
@@ -850,6 +866,10 @@ func (OpenDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_ string, _ [
 	return nil
 }
 
+func (OpenDoorSecurityPolicyEnforcer) EnforceExecInContainerPolicy(_ string, _ []string, _ []string, _ string) error {
+	return nil
+}
+
 func (OpenDoorSecurityPolicyEnforcer) enforceMountPolicy(_, _ string, _ []oci.Mount) error {
 	return nil
 }
@@ -882,6 +902,10 @@ func (ClosedDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []
 
 func (ClosedDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_ string, _ []string, _ []string, _ string, _ string, _ []oci.Mount) error {
 	return errors.New("running commands is denied by policy")
+}
+
+func (ClosedDoorSecurityPolicyEnforcer) EnforceExecInContainerPolicy(_ string, _ []string, _ []string, _ string) error {
+	return errors.New("starting additional processes in a container is denied by policy")
 }
 
 func (ClosedDoorSecurityPolicyEnforcer) enforceMountPolicy(_, _ string, _ []oci.Mount) error {

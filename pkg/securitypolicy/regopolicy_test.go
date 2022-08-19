@@ -6,6 +6,7 @@ package securitypolicy
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"testing"
@@ -552,7 +553,7 @@ func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
 				return false
 			}
 
-			envList := buildEnvironmentVariablesFromContainerRules(container, testRand)
+			envList := buildEnvironmentVariablesFromEnvRules(container.EnvRules, testRand)
 
 			sandboxID := testDataGenerator.uniqueSandboxID()
 			mounts := container.Mounts
@@ -819,6 +820,148 @@ func Test_Rego_MountPolicy_BadOption(t *testing.T) {
 	}
 }
 
+func Test_Rego_ExecInContainerPolicy(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoRunningContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
+		process := selectExecProcess(container.container.ExecProcesses, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.command, envList, process.workingDir)
+
+		// getting an error means something is broken
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecInContainerPolicy: %v", err)
+	}
+}
+
+func Test_Rego_ExecInContainerPolicy_No_Matches(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoRunningContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		containerID := tc.runningContainers[0].containerID
+
+		process := generateProcess(testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+
+		err = tc.policy.EnforceExecInContainerPolicy(containerID, process.command, envList, process.workingDir)
+		if err == nil {
+			t.Error("Test unexpectedly passed")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecInContainerPolicy_No_Matches: %v", err)
+	}
+}
+
+func Test_Rego_ExecInContainerPolicy_Command_No_Match(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoRunningContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
+		process := selectExecProcess(container.container.ExecProcesses, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+
+		command := generateCommand(testRand)
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, command, envList, process.workingDir)
+
+		// not getting an error means something is broken
+		if err == nil {
+			t.Error("Unexpected success when enforcing policy")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecInContainerPolicy_Command_No_Match: %v", err)
+	}
+}
+
+func Test_Rego_ExecInContainerPolicy_Some_Env_Not_Allowed(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoRunningContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
+		process := selectExecProcess(container.container.ExecProcesses, testRand)
+
+		envList := generateEnvironmentVariables(testRand)
+
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.command, envList, process.workingDir)
+
+		// not getting an error means something is broken
+		if err == nil {
+			t.Error("Unexpected success when enforcing policy")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecInContainerPolicy_Some_Env_Not_Allowed: %v", err)
+	}
+}
+
+func Test_Rego_ExecInContainerPolicy_WorkingDir_No_Match(t *testing.T) {
+	f := func(p *generatedContainers) bool {
+		tc, err := setupRegoRunningContainerTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
+		process := selectExecProcess(container.container.ExecProcesses, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		workingDir := generateWorkingDir(testRand)
+
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.command, envList, workingDir)
+
+		// not getting an error means something is broken
+		if err == nil {
+			t.Error("Unexpected success when enforcing policy")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecInContainerPolicy_WorkingDir_No_Match: %v", err)
+	}
+}
+
 //
 // Setup and "fixtures" follow...
 //
@@ -940,7 +1083,7 @@ func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securi
 		return nil, err
 	}
 
-	envList := buildEnvironmentVariablesFromContainerRules(testContainer, testRand)
+	envList := buildEnvironmentVariablesFromEnvRules(testContainer.EnvRules, testRand)
 	sandboxID := testDataGenerator.uniqueSandboxID()
 
 	mounts := testContainer.Mounts
@@ -962,6 +1105,65 @@ func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securi
 	}, nil
 }
 
+func setupRegoRunningContainerTest(gc *generatedContainers) (tc *regoRunningContainerTestConfig, err error) {
+	securityPolicy := newSecurityPolicyInternal(gc.containers)
+	defaultMounts := generateMounts(testRand)
+	privilegedMounts := generateMounts(testRand)
+
+	policy, err := newRegoPolicyFromInternal(securityPolicy,
+		toOCIMounts(defaultMounts),
+		toOCIMounts(privilegedMounts))
+	if err != nil {
+		return nil, err
+	}
+
+	var runningContainers []regoRunningContainer
+	numOfRunningContainers := atLeastOneAtMost(testRand, int32(len(gc.containers)))
+	for i := 0; i < int(numOfRunningContainers); i++ {
+		containerToStart := gc.containers[0]
+		containerID, err := mountImageForContainer(policy, containerToStart)
+		if err != nil {
+			return nil, err
+		}
+
+		envList := buildEnvironmentVariablesFromEnvRules(containerToStart.EnvRules, testRand)
+		sandboxID := generateSandboxID(testRand)
+
+		mounts := containerToStart.Mounts
+		mounts = append(mounts, defaultMounts...)
+		if containerToStart.AllowElevated {
+			mounts = append(mounts, privilegedMounts...)
+		}
+		mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
+
+		err = policy.EnforceCreateContainerPolicy(containerID, containerToStart.Command, envList, containerToStart.WorkingDir, sandboxID, mountSpec.Mounts)
+		if err != nil {
+			return nil, err
+		}
+
+		runningContainer := regoRunningContainer{
+			container:   containerToStart,
+			containerID: containerID,
+		}
+		runningContainers = append(runningContainers, runningContainer)
+	}
+
+	return &regoRunningContainerTestConfig{
+		runningContainers: runningContainers,
+		policy:            policy,
+	}, nil
+}
+
+type regoRunningContainerTestConfig struct {
+	runningContainers []regoRunningContainer
+	policy            *RegoEnforcer
+}
+
+type regoRunningContainer struct {
+	container   *securityPolicyContainer
+	containerID string
+}
+
 func mountImageForContainer(policy *RegoEnforcer, container *securityPolicyContainer) (string, error) {
 	containerID := testDataGenerator.uniqueContainerID()
 
@@ -977,4 +1179,14 @@ func mountImageForContainer(policy *RegoEnforcer, container *securityPolicyConta
 	}
 
 	return containerID, nil
+}
+
+func selectContainerFromRunningContainers(containers []regoRunningContainer, r *rand.Rand) regoRunningContainer {
+	numContainers := len(containers)
+	return containers[r.Intn(numContainers)]
+}
+
+func selectExecProcess(processes []containerProcess, r *rand.Rand) containerProcess {
+	numProcesses := len(processes)
+	return processes[r.Intn(numProcesses)]
 }
