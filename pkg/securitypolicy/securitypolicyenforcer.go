@@ -38,8 +38,7 @@ type SecurityPolicyEnforcer interface {
 	EnforceDeviceMountPolicy(target string, deviceHash string) (err error)
 	EnforceDeviceUnmountPolicy(unmountTarget string) (err error)
 	EnforceOverlayMountPolicy(containerID string, layerPaths []string) (err error)
-	EnforceCreateContainerPolicy(containerID string, argList []string, envList []string, workingDir string) (err error)
-	EnforceMountPolicy(sandboxID, containerID string, spec *oci.Spec) error
+	EnforceCreateContainerPolicy(containerID string, argList []string, envList []string, workingDir string, sandboxID string, mounts []oci.Mount) (err error)
 	ExtendDefaultMounts([]oci.Mount) error
 	EncodedSecurityPolicy() string
 }
@@ -522,6 +521,8 @@ func (pe *StandardSecurityPolicyEnforcer) EnforceCreateContainerPolicy(
 	argList []string,
 	envList []string,
 	workingDir string,
+	sandboxID string,
+	mounts []oci.Mount,
 ) (err error) {
 	pe.mutex.Lock()
 	defer pe.mutex.Unlock()
@@ -543,6 +544,10 @@ func (pe *StandardSecurityPolicyEnforcer) EnforceCreateContainerPolicy(
 	}
 
 	if err = pe.enforceWorkingDirPolicy(containerID, workingDir); err != nil {
+		return err
+	}
+
+	if err = pe.enforceMountPolicy(sandboxID, containerID, mounts); err != nil {
 		return err
 	}
 
@@ -719,19 +724,19 @@ func (pe *StandardSecurityPolicyEnforcer) ExtendDefaultMounts(defaultMounts []oc
 	return nil
 }
 
-// EnforceMountPolicy for StandardSecurityPolicyEnforcer validates various
+// enforceMountPolicy for StandardSecurityPolicyEnforcer validates various
 // default mounts injected into container spec by GCS or containerD. As part of
 // the enforcement, the method also narrows down possible container IDs with
 // the same overlay.
-func (pe *StandardSecurityPolicyEnforcer) EnforceMountPolicy(sandboxID, containerID string, spec *oci.Spec) (err error) {
+func (pe *StandardSecurityPolicyEnforcer) enforceMountPolicy(sandboxID, containerID string, mounts []oci.Mount) (err error) {
 	pe.mutex.Lock()
 	defer pe.mutex.Unlock()
 
 	possibleIndices := pe.possibleIndicesForID(containerID)
 
-	for _, specMnt := range spec.Mounts {
+	for _, mount := range mounts {
 		// first check against default mounts
-		if err := pe.enforceDefaultMounts(specMnt); err == nil {
+		if err := pe.enforceDefaultMounts(mount); err == nil {
 			continue
 		}
 
@@ -740,7 +745,7 @@ func (pe *StandardSecurityPolicyEnforcer) EnforceMountPolicy(sandboxID, containe
 		// out which container this mount spec corresponds to.
 		for _, pIndex := range possibleIndices {
 			cont := pe.Containers[pIndex]
-			if err = cont.matchMount(sandboxID, specMnt); err == nil {
+			if err = cont.matchMount(sandboxID, mount); err == nil {
 				mountOk = true
 			} else {
 				pe.narrowMatchesForContainerIndex(pIndex, containerID)
@@ -748,10 +753,11 @@ func (pe *StandardSecurityPolicyEnforcer) EnforceMountPolicy(sandboxID, containe
 		}
 
 		if !mountOk {
-			retErr := fmt.Errorf("mount %+v is not allowed by mount constraints", specMnt)
+			retErr := fmt.Errorf("mount %+v is not allowed by mount constraints", mount)
 			return retErr
 		}
 	}
+
 	return nil
 }
 
@@ -840,11 +846,11 @@ func (OpenDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []st
 	return nil
 }
 
-func (OpenDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_ string, _ []string, _ []string, _ string) error {
+func (OpenDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_ string, _ []string, _ []string, _ string, _ string, _ []oci.Mount) error {
 	return nil
 }
 
-func (OpenDoorSecurityPolicyEnforcer) EnforceMountPolicy(_, _ string, _ *oci.Spec) error {
+func (OpenDoorSecurityPolicyEnforcer) enforceMountPolicy(_, _ string, _ []oci.Mount) error {
 	return nil
 }
 
@@ -874,11 +880,11 @@ func (ClosedDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []
 	return errors.New("creating an overlay fs is denied by policy")
 }
 
-func (ClosedDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_ string, _ []string, _ []string, _ string) error {
+func (ClosedDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_ string, _ []string, _ []string, _ string, _ string, _ []oci.Mount) error {
 	return errors.New("running commands is denied by policy")
 }
 
-func (ClosedDoorSecurityPolicyEnforcer) EnforceMountPolicy(_, _ string, _ *oci.Spec) error {
+func (ClosedDoorSecurityPolicyEnforcer) enforceMountPolicy(_, _ string, _ []oci.Mount) error {
 	return errors.New("container mounts are denied by policy")
 }
 
