@@ -907,9 +907,9 @@ func generateContainers(r *rand.Rand, upTo int32) *generatedContainers {
 func generateContainersContainer(r *rand.Rand, minNumberOfLayers, maxNumberOfLayers int32) *securityPolicyContainer {
 	c := securityPolicyContainer{}
 	p := generateProcess(r)
-	c.Command = p.command
-	c.EnvRules = p.envRules
-	c.WorkingDir = p.workingDir
+	c.Command = p.Command
+	c.EnvRules = p.EnvRules
+	c.WorkingDir = p.WorkingDir
 	c.Mounts = generateMounts(r)
 	numLayers := int(atLeastNAtMostM(r, minNumberOfLayers, maxNumberOfLayers))
 	for i := 0; i < numLayers; i++ {
@@ -922,9 +922,9 @@ func generateContainersContainer(r *rand.Rand, minNumberOfLayers, maxNumberOfLay
 
 func generateProcess(r *rand.Rand) containerProcess {
 	return containerProcess{
-		command:    generateCommand(r),
-		envRules:   generateEnvironmentVariableRules(r),
-		workingDir: generateWorkingDir(r),
+		Command:    generateCommand(r),
+		EnvRules:   generateEnvironmentVariableRules(r),
+		WorkingDir: generateWorkingDir(r),
 	}
 }
 

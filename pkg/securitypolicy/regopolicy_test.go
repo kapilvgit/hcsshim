@@ -830,9 +830,9 @@ func Test_Rego_ExecInContainerPolicy(t *testing.T) {
 
 		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
 		process := selectExecProcess(container.container.ExecProcesses, testRand)
-		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.EnvRules, testRand)
 
-		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.command, envList, process.workingDir)
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.Command, envList, process.WorkingDir)
 
 		// getting an error means something is broken
 		if err != nil {
@@ -859,9 +859,9 @@ func Test_Rego_ExecInContainerPolicy_No_Matches(t *testing.T) {
 		containerID := tc.runningContainers[0].containerID
 
 		process := generateProcess(testRand)
-		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.EnvRules, testRand)
 
-		err = tc.policy.EnforceExecInContainerPolicy(containerID, process.command, envList, process.workingDir)
+		err = tc.policy.EnforceExecInContainerPolicy(containerID, process.Command, envList, process.WorkingDir)
 		if err == nil {
 			t.Error("Test unexpectedly passed")
 			return false
@@ -885,10 +885,10 @@ func Test_Rego_ExecInContainerPolicy_Command_No_Match(t *testing.T) {
 
 		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
 		process := selectExecProcess(container.container.ExecProcesses, testRand)
-		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.EnvRules, testRand)
 
 		command := generateCommand(testRand)
-		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, command, envList, process.workingDir)
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, command, envList, process.WorkingDir)
 
 		// not getting an error means something is broken
 		if err == nil {
@@ -917,7 +917,7 @@ func Test_Rego_ExecInContainerPolicy_Some_Env_Not_Allowed(t *testing.T) {
 
 		envList := generateEnvironmentVariables(testRand)
 
-		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.command, envList, process.workingDir)
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.Command, envList, process.WorkingDir)
 
 		// not getting an error means something is broken
 		if err == nil {
@@ -943,10 +943,10 @@ func Test_Rego_ExecInContainerPolicy_WorkingDir_No_Match(t *testing.T) {
 
 		container := selectContainerFromRunningContainers(tc.runningContainers, testRand)
 		process := selectExecProcess(container.container.ExecProcesses, testRand)
-		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.EnvRules, testRand)
 		workingDir := generateWorkingDir(testRand)
 
-		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.command, envList, workingDir)
+		err = tc.policy.EnforceExecInContainerPolicy(container.containerID, process.Command, envList, workingDir)
 
 		// not getting an error means something is broken
 		if err == nil {

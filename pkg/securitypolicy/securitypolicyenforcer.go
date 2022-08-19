@@ -170,9 +170,9 @@ type securityPolicyContainer struct {
 }
 
 type containerProcess struct {
-	command    []string
-	envRules   []EnvRuleConfig
-	workingDir string
+	Command    []string
+	EnvRules   []EnvRuleConfig
+	WorkingDir string
 }
 
 // StandardSecurityPolicyEnforcer implements SecurityPolicyEnforcer interface

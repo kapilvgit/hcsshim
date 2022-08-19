@@ -145,9 +145,9 @@ func writeLayers(builder *strings.Builder, layers []string, indent string) error
 }
 
 func (p containerProcess) MarshalRego() string {
-	command := StringArray(p.command).MarshalRego()
-	envRules := EnvRuleArray(p.envRules).MarshalRego()
-	return fmt.Sprintf("{\"command\": %s, \"env_rules\": %s, \"working_dir\": \"%s\"}", command, envRules, p.workingDir)
+	command := StringArray(p.Command).MarshalRego()
+	envRules := EnvRuleArray(p.EnvRules).MarshalRego()
+	return fmt.Sprintf("{\"command\": %s, \"env_rules\": %s, \"working_dir\": \"%s\"}", command, envRules, p.WorkingDir)
 }
 
 func writeExecProcesses(builder *strings.Builder, execProcesses []containerProcess, indent string) error {
