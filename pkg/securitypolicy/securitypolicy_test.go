@@ -900,7 +900,11 @@ func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses
 
 	var externalProcesses []*externalProcess
 
-	numExternalProcesses := (int)(atLeastOneAtMost(r, maxExternalProcesses))
+	numExternalProcesses := 0
+	if maxExternalProcesses > 1 {
+		numExternalProcesses = (int)(atLeastOneAtMost(r, maxExternalProcesses))
+	}
+
 	for i := 0; i < numExternalProcesses; i++ {
 		externalProcesses = append(externalProcesses, generateExternalProcess(r))
 	}
