@@ -17,8 +17,8 @@ import (
 
 // Validate we do our conversion from Json to rego correctly
 func Test_MarshalRego(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := newSecurityPolicyInternal(p.containers)
+	f := func(p *generatedConstraints) bool {
+		securityPolicy := p.toPolicy()
 		defaultMounts := toOCIMounts(generateMounts(testRand))
 		privilegedMounts := toOCIMounts(generateMounts(testRand))
 
@@ -38,8 +38,8 @@ func Test_MarshalRego(t *testing.T) {
 // Verify that RegoSecurityPolicyEnforcer.EnforceDeviceMountPolicy will
 // return an error when there's no matching root hash in the policy
 func Test_Rego_EnforceDeviceMountPolicy_No_Matches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := newSecurityPolicyInternal(p.containers)
+	f := func(p *generatedConstraints) bool {
+		securityPolicy := p.toPolicy()
 		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
@@ -62,15 +62,15 @@ func Test_Rego_EnforceDeviceMountPolicy_No_Matches(t *testing.T) {
 // Verify that RegoSecurityPolicyEnforcer.EnforceDeviceMountPolicy doesn't
 // return an error when there's a matching root hash in the policy
 func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := newSecurityPolicyInternal(p.containers)
+	f := func(p *generatedConstraints) bool {
+		securityPolicy := p.toPolicy()
 		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
 		}
 
 		target := testDataGenerator.uniqueMountTarget()
-		rootHash := selectRootHashFromContainers(p, testRand)
+		rootHash := selectRootHashFromConstraints(p, testRand)
 
 		err = policy.EnforceDeviceMountPolicy(target, rootHash)
 
@@ -84,8 +84,8 @@ func Test_Rego_EnforceDeviceMountPolicy_Matches(t *testing.T) {
 }
 
 func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := newSecurityPolicyInternal(p.containers)
+	f := func(p *generatedConstraints) bool {
+		securityPolicy := p.toPolicy()
 		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Error(err)
@@ -93,7 +93,7 @@ func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
 		}
 
 		target := testDataGenerator.uniqueMountTarget()
-		rootHash := selectRootHashFromContainers(p, testRand)
+		rootHash := selectRootHashFromConstraints(p, testRand)
 
 		err = policy.EnforceDeviceMountPolicy(target, rootHash)
 		if err != nil {
@@ -117,22 +117,22 @@ func Test_Rego_EnforceDeviceUmountPolicy_Removes_Device_Entries(t *testing.T) {
 }
 
 func Test_Rego_EnforceDeviceMountPolicy_Duplicate_Device_Target(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := newSecurityPolicyInternal(p.containers)
+	f := func(p *generatedConstraints) bool {
+		securityPolicy := p.toPolicy()
 		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Errorf("unable to convert policy to rego: %v", err)
 		}
 
 		target := testDataGenerator.uniqueMountTarget()
-		rootHash := selectRootHashFromContainers(p, testRand)
+		rootHash := selectRootHashFromConstraints(p, testRand)
 		err = policy.EnforceDeviceMountPolicy(target, rootHash)
 		if err != nil {
 			t.Error("Valid device mount failed. It shouldn't have.")
 			return false
 		}
 
-		rootHash = selectRootHashFromContainers(p, testRand)
+		rootHash = selectRootHashFromConstraints(p, testRand)
 		err = policy.EnforceDeviceMountPolicy(target, rootHash)
 		if err == nil {
 			t.Error("Duplicate device mount target was allowed. It shouldn't have been.")
@@ -150,7 +150,7 @@ func Test_Rego_EnforceDeviceMountPolicy_Duplicate_Device_Target(t *testing.T) {
 // Verify that RegoSecurityPolicyEnforcer.EnforceOverlayMountPolicy will
 // return an error when there's no matching overlay targets.
 func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoOverlayTest(p, false)
 		if err != nil {
 			t.Error(err)
@@ -171,7 +171,7 @@ func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
 // Verify that RegoSecurityPolicyEnforcer.EnforceOverlayMountPolicy doesn't
 // return an error when there's a valid overlay target.
 func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoOverlayTest(p, true)
 		if err != nil {
 			t.Error(err)
@@ -194,13 +194,16 @@ func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 // implementation.
 func Test_Rego_EnforceOverlayMountPolicy_Layers_With_Same_Root_Hash(t *testing.T) {
 
-	container := generateContainersContainer(testRand, 2, maxLayersInGeneratedContainer)
+	container := generateConstraintsContainer(testRand, 2, maxLayersInGeneratedContainer)
 
 	// make the last two layers have the same hash value
 	numLayers := len(container.Layers)
 	container.Layers[numLayers-2] = container.Layers[numLayers-1]
 
-	securityPolicy := newSecurityPolicyInternal([]*securityPolicyContainer{container})
+	constraints := new(generatedConstraints)
+	constraints.containers = []*securityPolicyContainer{container}
+	constraints.externalProcesses = generateExternalProcesses(testRand)
+	securityPolicy := constraints.toPolicy()
 	policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 	if err != nil {
 		t.Fatal("Unable to create security policy")
@@ -224,16 +227,18 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_With_Same_Root_Hash(t *testing.T
 // is used by many containers.
 // The setup for this test is rather complicated
 func Test_Rego_EnforceOverlayMountPolicy_Layers_Shared_Layers(t *testing.T) {
-	containerOne := generateContainersContainer(testRand, 1, 2)
-	containerTwo := generateContainersContainer(testRand, 1, 10)
+	containerOne := generateConstraintsContainer(testRand, 1, 2)
+	containerTwo := generateConstraintsContainer(testRand, 1, 10)
 
 	sharedLayerIndex := 0
 
 	// Make the two containers have the same base layer
 	containerTwo.Layers[sharedLayerIndex] = containerOne.Layers[sharedLayerIndex]
-	containers := []*securityPolicyContainer{containerOne, containerTwo}
+	constraints := new(generatedConstraints)
+	constraints.containers = []*securityPolicyContainer{containerOne, containerTwo}
+	constraints.externalProcesses = generateExternalProcesses(testRand)
 
-	securityPolicy := newSecurityPolicyInternal(containers)
+	securityPolicy := constraints.toPolicy()
 	policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 	if err != nil {
 		t.Fatal("Unable to create security policy")
@@ -304,7 +309,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_Shared_Layers(t *testing.T) {
 // Tests the specific case of trying to mount the same overlay twice using the
 // same container id. This should be disallowed.
 func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoOverlayTest(p, true)
 		if err != nil {
 			t.Error(err)
@@ -331,11 +336,14 @@ func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testi
 func Test_Rego_EnforceOverlayMountPolicy_Reusing_ID_Across_Overlays(t *testing.T) {
 	var containers []*securityPolicyContainer
 
+	constraints := new(generatedConstraints)
 	for i := 0; i < 2; i++ {
-		containers = append(containers, generateContainersContainer(testRand, 1, maxLayersInGeneratedContainer))
+		constraints.containers = append(containers, generateConstraintsContainer(testRand, 1, maxLayersInGeneratedContainer))
 	}
 
-	securityPolicy := newSecurityPolicyInternal(containers)
+	constraints.externalProcesses = generateExternalProcesses(testRand)
+
+	securityPolicy := constraints.toPolicy()
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
 
@@ -377,9 +385,9 @@ func Test_Rego_EnforceOverlayMountPolicy_Reusing_ID_Across_Overlays(t *testing.T
 // 13 instances of image X that all share the same overlay of root hashes,
 // all 13 should be allowed.
 func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing.T) {
-	for containersToCreate := 13; containersToCreate <= maxContainersInGeneratedPolicy; containersToCreate++ {
-		var containers []*securityPolicyContainer
-
+	for containersToCreate := 13; containersToCreate <= maxContainersInGeneratedConstraints; containersToCreate++ {
+		constraints := new(generatedConstraints)
+		constraints.externalProcesses = generateExternalProcesses(testRand)
 		for i := 1; i <= containersToCreate; i++ {
 			arg := "command " + strconv.Itoa(i)
 			c := &securityPolicyContainer{
@@ -387,17 +395,17 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 				Layers:  []string{"1", "2"},
 			}
 
-			containers = append(containers, c)
+			constraints.containers = append(constraints.containers, c)
 		}
 
-		securityPolicy := newSecurityPolicyInternal(containers)
+		securityPolicy := constraints.toPolicy()
 		policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 		if err != nil {
 			t.Fatalf("failed create enforcer")
 		}
 
-		for i := 0; i < len(containers); i++ {
-			layerPaths, err := testDataGenerator.createValidOverlayForContainer(policy, containers[i])
+		for i := 0; i < len(constraints.containers); i++ {
+			layerPaths, err := testDataGenerator.createValidOverlayForContainer(policy, constraints.containers[i])
 			if err != nil {
 				t.Fatal("unexpected error on test setup")
 			}
@@ -412,7 +420,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 }
 
 func Test_Rego_EnforceCommandPolicy_NoMatches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -434,8 +442,8 @@ func Test_Rego_EnforceCommandPolicy_NoMatches(t *testing.T) {
 }
 
 func Test_Rego_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
-	testFunc := func(gc *generatedContainers) bool {
-		container := selectContainerFromContainers(gc, testRand)
+	testFunc := func(gc *generatedConstraints) bool {
+		container := selectContainerFromConstraints(gc, testRand)
 		// add a rule to re2 match
 		re2MatchRule := EnvRuleConfig{
 			Strategy: EnvVarRuleRegex,
@@ -468,7 +476,7 @@ func Test_Rego_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
 }
 
 func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -492,7 +500,7 @@ func Test_Rego_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
 }
 
 func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
-	testFunc := func(gc *generatedContainers) bool {
+	testFunc := func(gc *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(gc)
 		if err != nil {
 			t.Error(err)
@@ -514,7 +522,7 @@ func Test_Rego_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 }
 
 func Test_Rego_EnforceCreateContainer(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -533,8 +541,8 @@ func Test_Rego_EnforceCreateContainer(t *testing.T) {
 }
 
 func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
-	f := func(p *generatedContainers) bool {
-		securityPolicy := newSecurityPolicyInternal(p.containers)
+	f := func(p *generatedConstraints) bool {
+		securityPolicy := p.toPolicy()
 		defaultMounts := generateMounts(testRand)
 		privilegedMounts := generateMounts(testRand)
 
@@ -582,7 +590,7 @@ func Test_Rego_Enforce_CreateContainer_Start_All_Containers(t *testing.T) {
 }
 
 func Test_Rego_EnforceCreateContainer_Invalid_ContainerID(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -602,7 +610,7 @@ func Test_Rego_EnforceCreateContainer_Invalid_ContainerID(t *testing.T) {
 }
 
 func Test_Rego_EnforceCreateContainer_Same_Container_Twice(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -629,7 +637,7 @@ func Test_Rego_EnforceCreateContainer_Same_Container_Twice(t *testing.T) {
 }
 
 func Test_Rego_ExtendDefaultMounts(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -658,7 +666,7 @@ func Test_Rego_ExtendDefaultMounts(t *testing.T) {
 }
 
 func Test_Rego_MountPolicy_NoMatches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -686,7 +694,7 @@ func Test_Rego_MountPolicy_NoMatches(t *testing.T) {
 }
 
 func Test_Rego_MountPolicy_NotAllOptionsFromConstraints(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -714,7 +722,7 @@ func Test_Rego_MountPolicy_NotAllOptionsFromConstraints(t *testing.T) {
 }
 
 func Test_Rego_MountPolicy_BadSource(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -740,7 +748,7 @@ func Test_Rego_MountPolicy_BadSource(t *testing.T) {
 }
 
 func Test_Rego_MountPolicy_BadDestination(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -766,7 +774,7 @@ func Test_Rego_MountPolicy_BadDestination(t *testing.T) {
 }
 
 func Test_Rego_MountPolicy_BadType(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -792,7 +800,7 @@ func Test_Rego_MountPolicy_BadType(t *testing.T) {
 }
 
 func Test_Rego_MountPolicy_BadOption(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupSimpleRegoCreateContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -821,7 +829,7 @@ func Test_Rego_MountPolicy_BadOption(t *testing.T) {
 }
 
 func Test_Rego_ExecInContainerPolicy(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoRunningContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -849,7 +857,7 @@ func Test_Rego_ExecInContainerPolicy(t *testing.T) {
 }
 
 func Test_Rego_ExecInContainerPolicy_No_Matches(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoRunningContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -876,7 +884,7 @@ func Test_Rego_ExecInContainerPolicy_No_Matches(t *testing.T) {
 }
 
 func Test_Rego_ExecInContainerPolicy_Command_No_Match(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoRunningContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -905,7 +913,7 @@ func Test_Rego_ExecInContainerPolicy_Command_No_Match(t *testing.T) {
 }
 
 func Test_Rego_ExecInContainerPolicy_Some_Env_Not_Allowed(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoRunningContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -934,7 +942,7 @@ func Test_Rego_ExecInContainerPolicy_Some_Env_Not_Allowed(t *testing.T) {
 }
 
 func Test_Rego_ExecInContainerPolicy_WorkingDir_No_Match(t *testing.T) {
-	f := func(p *generatedContainers) bool {
+	f := func(p *generatedConstraints) bool {
 		tc, err := setupRegoRunningContainerTest(p)
 		if err != nil {
 			t.Error(err)
@@ -962,14 +970,142 @@ func Test_Rego_ExecInContainerPolicy_WorkingDir_No_Match(t *testing.T) {
 	}
 }
 
+func Test_Rego_ExecExternalProcessPolicy(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupExternalProcessTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		process := selectExternalProcessFromConstraints(p, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+
+		err = tc.policy.EnforceExecExternalProcessPolicy(process.command, envList, process.workingDir)
+		if err != nil {
+			t.Error("Policy enforcement unexpectedly was denied")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecExternalProcessPolicy: %v", err)
+	}
+}
+
+func Test_Rego_ExecExternalProcessPolicy_No_Matches(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupExternalProcessTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		process := generateExternalProcess(testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+
+		err = tc.policy.EnforceExecExternalProcessPolicy(process.command, envList, process.workingDir)
+		if err == nil {
+			t.Error("Policy was unexpectedly not enforced")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecExternalProcessPolicy_No_Matches: %v", err)
+	}
+}
+
+func Test_Rego_ExecExternalProcessPolicy_Command_No_Match(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupExternalProcessTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		process := selectExternalProcessFromConstraints(p, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		command := generateCommand(testRand)
+
+		err = tc.policy.EnforceExecExternalProcessPolicy(command, envList, process.workingDir)
+		if err == nil {
+			t.Error("Policy was unexpectedly not enforced")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecExternalProcessPolicy_Command_No_Match: %v", err)
+	}
+}
+
+func Test_Rego_ExecExternalProcessPolicy_Some_Env_Not_Allowed(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupExternalProcessTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		process := selectExternalProcessFromConstraints(p, testRand)
+		envList := generateEnvironmentVariables(testRand)
+
+		err = tc.policy.EnforceExecExternalProcessPolicy(process.command, envList, process.workingDir)
+		if err == nil {
+			t.Error("Policy was unexpectedly not enforced")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecExternalProcessPolicy_Some_Env_Not_Allowed: %v", err)
+	}
+}
+
+func Test_Rego_ExecExternalProcessPolicy_WorkingDir_No_Match(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupExternalProcessTest(p)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		process := selectExternalProcessFromConstraints(p, testRand)
+		envList := buildEnvironmentVariablesFromEnvRules(process.envRules, testRand)
+		workingDir := generateWorkingDir(testRand)
+
+		err = tc.policy.EnforceExecExternalProcessPolicy(process.command, envList, workingDir)
+		if err == nil {
+			t.Error("Policy was unexpectedly not enforced")
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50}); err != nil {
+		t.Errorf("Test_Rego_ExecExternalProcessPolicy_WorkingDir_No_Match: %v", err)
+	}
+}
+
 //
 // Setup and "fixtures" follow...
 //
 
-func newSecurityPolicyInternal(containers []*securityPolicyContainer) *securityPolicyInternal {
+func (constraints *generatedConstraints) toPolicy() *securityPolicyInternal {
 	securityPolicy := new(securityPolicyInternal)
 	securityPolicy.AllowAll = false
-	securityPolicy.Containers = containers
+	securityPolicy.Containers = constraints.containers
+	securityPolicy.ExternalProcesses = constraints.externalProcesses
 	return securityPolicy
 }
 
@@ -1020,15 +1156,15 @@ type regoOverlayTestConfig struct {
 	policy      *RegoEnforcer
 }
 
-func setupRegoOverlayTest(gc *generatedContainers, valid bool) (tc *regoOverlayTestConfig, err error) {
-	securityPolicy := newSecurityPolicyInternal(gc.containers)
+func setupRegoOverlayTest(gc *generatedConstraints, valid bool) (tc *regoOverlayTestConfig, err error) {
+	securityPolicy := gc.toPolicy()
 	policy, err := newRegoPolicyFromInternal(securityPolicy, []oci.Mount{}, []oci.Mount{})
 	if err != nil {
 		return nil, err
 	}
 
 	containerID := testDataGenerator.uniqueContainerID()
-	c := selectContainerFromContainers(gc, testRand)
+	c := selectContainerFromConstraints(gc, testRand)
 
 	var layerPaths []string
 	if valid {
@@ -1061,13 +1197,13 @@ type regoContainerTestConfig struct {
 	policy      *RegoEnforcer
 }
 
-func setupSimpleRegoCreateContainerTest(gc *generatedContainers) (tc *regoContainerTestConfig, err error) {
-	c := selectContainerFromContainers(gc, testRand)
+func setupSimpleRegoCreateContainerTest(gc *generatedConstraints) (tc *regoContainerTestConfig, err error) {
+	c := selectContainerFromConstraints(gc, testRand)
 	return setupRegoCreateContainerTest(gc, c)
 }
 
-func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securityPolicyContainer) (tc *regoContainerTestConfig, err error) {
-	securityPolicy := newSecurityPolicyInternal(gc.containers)
+func setupRegoCreateContainerTest(gc *generatedConstraints, testContainer *securityPolicyContainer) (tc *regoContainerTestConfig, err error) {
+	securityPolicy := gc.toPolicy()
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
 
@@ -1105,8 +1241,8 @@ func setupRegoCreateContainerTest(gc *generatedContainers, testContainer *securi
 	}, nil
 }
 
-func setupRegoRunningContainerTest(gc *generatedContainers) (tc *regoRunningContainerTestConfig, err error) {
-	securityPolicy := newSecurityPolicyInternal(gc.containers)
+func setupRegoRunningContainerTest(gc *generatedConstraints) (tc *regoRunningContainerTestConfig, err error) {
+	securityPolicy := gc.toPolicy()
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
 
@@ -1162,6 +1298,27 @@ type regoRunningContainerTestConfig struct {
 type regoRunningContainer struct {
 	container   *securityPolicyContainer
 	containerID string
+}
+
+func setupExternalProcessTest(gc *generatedConstraints) (tc *regoExternalPolicyTestConfig, err error) {
+	securityPolicy := gc.toPolicy()
+	defaultMounts := generateMounts(testRand)
+	privilegedMounts := generateMounts(testRand)
+
+	policy, err := newRegoPolicyFromInternal(securityPolicy,
+		toOCIMounts(defaultMounts),
+		toOCIMounts(privilegedMounts))
+	if err != nil {
+		return nil, err
+	}
+
+	return &regoExternalPolicyTestConfig{
+		policy: policy,
+	}, nil
+}
+
+type regoExternalPolicyTestConfig struct {
+	policy *RegoEnforcer
 }
 
 func mountImageForContainer(policy *RegoEnforcer, container *securityPolicyContainer) (string, error) {

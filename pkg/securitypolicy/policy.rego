@@ -43,6 +43,16 @@ exec_in_container := true {
 	data.policy.allow_all
 }
 
+default exec_external := false
+exec_external := true {
+	data.framework.exec_external
+}
+
+exec_external := true {
+	count(data.policy.containers) == 0
+	data.policy.allow_all
+}
+
 # error messages
 
 default container_started := false
@@ -74,6 +84,12 @@ command_matches := true {
 	data.framework.command_ok(process.command)
 }
 
+command_matches := true {
+	input.rule == "exec_external"
+	some process in data.policy.ext_processes
+	data.framework.command_ok(process.command)
+}
+
 reason["invalid command"] {
 	not command_matches
 }
@@ -90,6 +106,13 @@ envList_matches := true {
 	some container in data.policy.containers
 	some process in container.exec_processes
 	data.framework.envList_ok(process.env_rules)
+}
+
+envList_matches := true {
+	input.rule == "exec_external"
+	some process in data.policy.ext_processes
+	data.framework.envList_ok(process.env_rules)
+
 }
 
 reason["invalid env list"] {
@@ -110,6 +133,12 @@ workingDirectory_matches := true {
 	data.framework.workingDirectory_ok(process.working_dir)
 }
 
+workingDirectory_matches := true {
+	input.rule == "exec_external"
+	some process in data.policy.ext_processes
+	data.framework.workingDirectory_ok(process.working_dir)
+}
+
 reason["invalid working directory"] {
 	not workingDirectory_matches
 }
@@ -121,5 +150,6 @@ mountList_matches := true {
 }
 
 reason["invalid mount list"] {
+	input.rule in ["create_container", "exec_in_container"]
 	not mountList_matches
 }

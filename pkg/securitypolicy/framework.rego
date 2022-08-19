@@ -119,3 +119,11 @@ exec_in_container := true {
     envList_ok(process.env_rules)
     workingDirectory_ok(process.working_dir)
 }
+
+default exec_external := false
+exec_external := true {
+    some process in data.policy.ext_processes
+    command_ok(process.command)
+    envList_ok(process.env_rules)
+    workingDirectory_ok(process.working_dir)    
+}

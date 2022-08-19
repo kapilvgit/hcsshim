@@ -62,8 +62,9 @@ type RegoEnforcer struct {
 }
 
 type securityPolicyInternal struct {
-	AllowAll   bool
-	Containers []*securityPolicyContainer
+	AllowAll          bool
+	Containers        []*securityPolicyContainer
+	ExternalProcesses []*externalProcess
 }
 
 func (sp SecurityPolicy) toInternal() (*securityPolicyInternal, error) {
@@ -243,6 +244,25 @@ func addContainers(builder *strings.Builder, containers []*securityPolicyContain
 	return nil
 }
 
+func (p externalProcess) MarshalRego() string {
+	command := StringArray(p.command).MarshalRego()
+	envRules := EnvRuleArray(p.envRules).MarshalRego()
+	return fmt.Sprintf("{\"command\": %s, \"env_rules\": %s, \"working_dir\": \"%s\"}", command, envRules, p.workingDir)
+}
+
+func writeExternalProcesses(builder *strings.Builder, externalProcesses []*externalProcess) error {
+	values := make([]string, len(externalProcesses))
+	for i, process := range externalProcesses {
+		values[i] = process.MarshalRego()
+	}
+
+	if _, err := builder.WriteString(fmt.Sprintf("ext_processes := [%s]\n", strings.Join(values, ","))); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p securityPolicyInternal) MarshalRego() (string, error) {
 	builder := new(strings.Builder)
 	if _, err := builder.WriteString(fmt.Sprintf("package policy\nallow_all := %v\n", p.AllowAll)); err != nil {
@@ -250,6 +270,10 @@ func (p securityPolicyInternal) MarshalRego() (string, error) {
 	}
 
 	if err := addContainers(builder, p.Containers); err != nil {
+		return "", err
+	}
+
+	if err := writeExternalProcesses(builder, p.ExternalProcesses); err != nil {
 		return "", err
 	}
 
@@ -563,5 +587,39 @@ func (policy *RegoEnforcer) EnforceExecInContainerPolicy(containerID string, arg
 			reasons = append(reasons, reason.(string))
 		}
 		return fmt.Errorf("exec in container not allowed by policy. Reasons: [%s]", strings.Join(reasons, ","))
+	}
+}
+
+func (policy *RegoEnforcer) EnforceExecExternalProcessPolicy(argList []string, envList []string, workingDir string) error {
+	policy.mutex.Lock()
+	defer policy.mutex.Unlock()
+
+	input := make(map[string]interface{})
+
+	input["name"] = "exec_external"
+	input["argList"] = argList
+	input["envList"] = envList
+	input["workingDir"] = workingDir
+
+	result, err := policy.Query(input)
+	if err != nil {
+		return err
+	}
+
+	if result.Allowed() {
+		return nil
+	} else {
+		input["name"] = "reason"
+		input["rule"] = "exec_external"
+		result, err := policy.Query(input)
+		if err != nil {
+			return err
+		}
+
+		reasons := []string{}
+		for _, reason := range result[0].Expressions[0].Value.([]interface{}) {
+			reasons = append(reasons, reason.(string))
+		}
+		return fmt.Errorf("exec not allowed by policy. Reasons: [%s]", strings.Join(reasons, ","))
 	}
 }
