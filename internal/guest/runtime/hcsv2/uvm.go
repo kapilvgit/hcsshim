@@ -462,10 +462,12 @@ func (h *Host) SignalContainerProcess(ctx context.Context, containerID string, p
 		return err
 	}
 
+	signalingInitProcess := (processID == c.initProcess.pid)
+
 	// Don't allow signalProcessV2 to route around container shutdown policy
 	// Sending SIGTERM or SIGKILL to a containers init process will shut down
 	// the container.
-	if processID == c.initProcess.pid {
+	if signalingInitProcess {
 		if (signal == unix.SIGTERM) || (signal == unix.SIGKILL) {
 			graceful := (signal == unix.SIGTERM)
 			return h.ShutdownContainer(ctx, containerID, graceful)
@@ -473,6 +475,12 @@ func (h *Host) SignalContainerProcess(ctx context.Context, containerID string, p
 	}
 
 	p, err := c.GetProcess(processID)
+	if err != nil {
+		return err
+	}
+
+	startupArgList := p.(*containerProcess).spec.Args
+	err = h.securityPolicyEnforcer.EnforceSignalContainerProcessPolicy(containerID, signal, signalingInitProcess, startupArgList)
 	if err != nil {
 		return err
 	}
