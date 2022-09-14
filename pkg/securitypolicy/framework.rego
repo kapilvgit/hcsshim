@@ -15,6 +15,14 @@ deviceHash_ok {
     input.deviceHash == layer
 }
 
+deviceHash_ok {
+    some issuer in data.metadata.issuers
+    some feed in issuer.feeds
+    some container in feed.containers
+    some layer in container.layers
+    input.deviceHash == layer
+}
+
 default mount_device := {"allowed": false}
 
 mount_device := {"devices": devices, "allowed": true} {
@@ -59,10 +67,17 @@ default mount_overlay := {"allowed": false}
 
 mount_overlay := {"matches": matches, "overlayTargets": overlay_targets, "allowed": true} {
     not overlay_exists
-    containers := [container |
+    policy_containers := [container |
         some container in data.policy.containers
         layerPaths_ok(container.layers)
     ]
+    fragment_containers := [container |
+        some issuer in data.metadata.issuers
+        some feed in issuer.feeds
+        some container in feed.containers
+        layerPaths_ok(container.layers)
+    ]
+    containers := array.concat(policy_containers, fragment_containers)
     count(containers) > 0
     matches := {
         "action": "add",
@@ -93,12 +108,24 @@ command_ok(command) {
     }
 }
 
-env_ok(pattern, "string", value) {
+envRule_ok(pattern, "string", value) {
     pattern == value
 }
 
-env_ok(pattern, "re2", value) {
+envRule_ok(pattern, "re2", value) {
     regex.match(pattern, value)
+}
+
+env_ok(env_rules, value) {
+    some rule in env_rules
+    envRule_ok(rule.pattern, rule.strategy, value)
+}
+
+env_ok(env_rules, value) {
+    some iss in data.metadata.issuers
+    some feed in iss.feeds
+    some rule in feed.env_rules
+    envRule_ok(rule.pattern, rule.strategy, value)
 }
 
 rule_ok(rule, env) {
@@ -112,8 +139,7 @@ rule_ok(rule, env) {
 
 envList_ok(env_rules) {
     every env in input.envList {
-        some rule in env_rules
-        env_ok(rule.pattern, rule.strategy, env)
+        env_ok(env_rules, env)
     }
 
     every rule in env_rules {
@@ -334,6 +360,86 @@ exec_external := {"allowed": true} {
     workingDirectory_ok(process.working_dir)
 }
 
+default fragment_containers := []
+fragment_containers := data[input.namespace].containers
+
+default fragment_fragments := []
+fragment_fragments := data[input.namespace].fragments
+
+default fragment_env_rules := []
+fragment_env_rules := data[input.namespace].env_rules
+
+extract_feed(includes) := feed {
+    objects := {
+        "containers": fragment_containers,
+        "fragments": fragment_fragments,
+        "env_rules": fragment_env_rules
+    }
+
+    feed := {
+        include: objects[include] | include := includes[_]
+    }
+}
+
+issuer_exists(iss) {
+    data.metadata.issuers[iss]
+}
+
+update_issuer(includes) := issuer {
+    old_feeds := data.metadata.issuers[input.iss]
+    new_feed := {
+        "feeds": {
+            input.feed: extract_feed(includes)
+        }
+    }
+    issuer := object.union(old_feeds, new_feed)
+}
+
+update_issuer(includes) := issuer {
+    not issuer_exists(input.iss)
+    issuer := {
+        "feeds": {
+            input.feed: extract_feed(includes)
+        }
+    }
+}
+
+default load_fragment := {"allowed": false}
+
+fragment_ok(fragment) {
+    semver.compare(data[input.namespace].svn, fragment.minimum_svn) >= 0
+    input.iss == fragment.iss
+    input.feed == fragment.feed
+}
+
+load_fragment := {"issuers": issuers, "add_module": add_module, "allowed": true} {
+    some iss in data.metadata.issuers
+    some feed in iss.feeds
+    some fragment in feed.fragments
+    fragment_ok(fragment)
+    issuer := update_issuer(fragment.includes)
+    issuers := {
+        "action": "update",
+        "key": input.iss,
+        "value": issuer
+    }
+
+    add_module := "namespace" in fragment.includes
+}
+
+load_fragment := {"issuers": issuers, "add_module": add_module, "allowed": true} {
+    some fragment in data.policy.fragments
+    fragment_ok(fragment)
+    issuer := update_issuer(fragment.includes)
+    issuers := {
+        "action": "update",
+        "key": input.iss,
+        "value": issuer
+    }
+
+    add_module := "namespace" in fragment.includes
+}
+
 # error messages
 
 errors["deviceHash not found"] {
@@ -376,6 +482,20 @@ overlay_matches {
 errors["no overlay at path to unmount"] {
     input.rule == "unmount_overlay"
     not overlay_mounted(input.unmountTarget)
+}
+
+default overlay_matches := false
+
+overlay_matches {
+    some container in data.policy.containers
+    layerPaths_ok(container.layers)
+}
+
+overlay_matches {
+    some issuer in data.metadata.issuers
+    some feed in issuer.feeds
+    some container in feed.containers
+    layerPaths_ok(container.layers)
 }
 
 errors["no matching containers for overlay"] {

@@ -1,6 +1,6 @@
 package api
 
-svn := "0.6.0"
+svn := "0.7.0"
 
 enforcement_points := {
     "mount_device": {"introducedVersion": "0.1.0", "allowedByDefault": false},
@@ -13,5 +13,6 @@ enforcement_points := {
     "shutdown_container": {"introducedVersion": "0.4.0", "allowedByDefault": true},
     "signal_container_process": {"introducedVersion": "0.5.0", "allowedByDefault": true},
     "plan9_mount": {"introducedVersion": "0.6.0", "allowedByDefault": true},
-    "plan9_unmount": {"introducedVersion": "0.6.0", "allowedByDefault": true},
+    "plan9_unmount": {"introducedVersion": "0.6.0", "allowedByDefault": true},,
+    "load_fragment": {"introducedVeresion": "0.7.0", "allowedByDefault": false}
 }
