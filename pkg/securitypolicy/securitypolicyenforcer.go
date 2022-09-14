@@ -859,6 +859,10 @@ func (ClosedDoorSecurityPolicyEnforcer) ExtendDefaultMounts(_ []oci.Mount) error
 	return errors.New("extending default mounts is denied by policy")
 }
 
+func (*ClosedDoorSecurityPolicyEnforcer) EnforceSignalContainerProcessPolicy(_ string, _ syscall.Signal, _ bool, _ []string) error {
+	return errors.New("signalling container processes is denied by policy")
+}
+
 func (*ClosedDoorSecurityPolicyEnforcer) EnforcePlan9MountPolicy(_ string) error {
 	return errors.New("mounting is denied by policy")
 }

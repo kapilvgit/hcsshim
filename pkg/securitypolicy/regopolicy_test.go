@@ -1796,6 +1796,10 @@ func Test_Rego_Plan9UnmountPolicy_No_Matches(t *testing.T) {
 	}
 }
 
+func Test_Rego_LoadFragment(t *testing.T) {
+
+}
+
 //
 // Setup and "fixtures" follow...
 //

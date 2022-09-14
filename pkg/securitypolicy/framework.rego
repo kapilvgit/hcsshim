@@ -408,7 +408,7 @@ default load_fragment := {"allowed": false}
 
 fragment_ok(fragment) {
     semver.compare(data[input.namespace].svn, fragment.minimum_svn) >= 0
-    input.iss == fragment.iss
+    input.issuer == fragment.issuer
     input.feed == fragment.feed
 }
 
@@ -420,7 +420,7 @@ load_fragment := {"issuers": issuers, "add_module": add_module, "allowed": true}
     issuer := update_issuer(fragment.includes)
     issuers := {
         "action": "update",
-        "key": input.iss,
+        "key": input.issuer,
         "value": issuer
     }
 

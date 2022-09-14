@@ -120,7 +120,7 @@ func createRegoEnforcer(base64EncodedPolicy string,
 			return createOpenDoorEnforcer(base64EncodedPolicy, defaultMounts, privilegedMounts)
 		}
 
-		code, err = marshalRego(securityPolicy.AllowAll, containers, []ExternalProcessConfig{}, []string{})
+		code, err = marshalRego(securityPolicy.AllowAll, containers, []ExternalProcessConfig{}, []string{}, []FragmentConfig{})
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling the policy to Rego: %w", err)
 		}
@@ -154,9 +154,9 @@ func newRegoPolicy(code string, defaultMounts []oci.Mount, privilegedMounts []oc
 	policy.base64policy = ""
 	policy.debug = false
 	policy.modules = map[string]*module{
-		"policy.rego":    &module{namespace: "policy", code: policy.code},
-		"api.rego":       &module{namespace: "api", code: apiCode},
-		"framework.rego": &module{namespace: "framework", code: frameworkCode},
+		"policy.rego":    {namespace: "policy", code: policy.code},
+		"api.rego":       {namespace: "api", code: apiCode},
+		"framework.rego": {namespace: "framework", code: frameworkCode},
 	}
 
 	err := policy.compile()

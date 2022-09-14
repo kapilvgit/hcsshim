@@ -8,6 +8,7 @@ import (
 
 // Internal version of SecurityPolicy
 type securityPolicyInternal struct {
+	Fragments         []*fragment
 	Containers        []*securityPolicyContainer
 	ExternalProcesses []*externalProcess
 	Plan9Mounts       []string
@@ -56,6 +57,13 @@ type mountInternal struct {
 	Destination string
 	Type        string
 	Options     []string
+}
+
+type fragment struct {
+	issuer     string
+	feed       string
+	minimumSVN string
+	includes   []string
 }
 
 func (c Container) toInternal() (securityPolicyContainer, error) {
@@ -162,6 +170,15 @@ func (p ExternalProcessConfig) toInternal() externalProcess {
 			Required: true,
 		}},
 		workingDir: p.WorkingDir,
+	}
+}
+
+func (f FragmentConfig) toInternal() fragment {
+	return fragment{
+		issuer:     f.Issuer,
+		feed:       f.Feed,
+		minimumSVN: f.MinimumSVN,
+		includes:   f.Includes,
 	}
 }
 

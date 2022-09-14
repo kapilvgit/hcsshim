@@ -26,6 +26,7 @@ const (
 // PolicyConfig contains toml or JSON config for security policy.
 type PolicyConfig struct {
 	AllowAll          bool                    `json:"allow_all" toml:"allow_all"`
+	Fragments         []FragmentConfig        `json:"fragments" toml:"fragment"`
 	Containers        []ContainerConfig       `json:"containers" toml:"container"`
 	ExternalProcesses []ExternalProcessConfig `json:"external_processes" toml:"external_process"`
 	Plan9Mounts       []string                `json:"plan9_mounts" toml:"plan9_mounts"`
@@ -35,6 +36,14 @@ type PolicyConfig struct {
 type ExternalProcessConfig struct {
 	Command    []string `json:"command" toml:"command"`
 	WorkingDir string   `json:"working_dir" toml:"working_dir"`
+}
+
+// FragmentConfig contains toml or JSON config for including elements from fragments.
+type FragmentConfig struct {
+	Issuer     string   `json:"issuer" toml:"issuer"`
+	Feed       string   `json:"feed" toml:"feed"`
+	MinimumSVN string   `json:"minimum_svn" toml:"minimum_svn"`
+	Includes   []string `json:"includes" toml:"include"`
 }
 
 // AuthConfig contains toml or JSON config for registry authentication.

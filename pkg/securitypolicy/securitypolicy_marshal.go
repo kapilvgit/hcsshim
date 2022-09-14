@@ -13,7 +13,7 @@ import (
 	"syscall"
 )
 
-type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string) (string, error)
+type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string, fragments []FragmentConfig) (string, error)
 
 const (
 	jsonMarshaller = "json"
@@ -36,7 +36,7 @@ var policyRegoTemplate string
 //go:embed open_door.rego
 var openDoorRegoTemplate string
 
-func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConfig, _ []string) (string, error) {
+func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConfig, _ []string, _ []FragmentConfig) (string, error) {
 	var policy *SecurityPolicy
 	if allowAll {
 		if len(containers) > 0 {
@@ -56,7 +56,7 @@ func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConf
 	return string(policyCode), nil
 }
 
-func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string) (string, error) {
+func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string, fragments []FragmentConfig) (string, error) {
 	if allowAll {
 		if len(containers) > 0 {
 			return "", ErrInvalidOpenDoorPolicy
@@ -83,10 +83,16 @@ func marshalRego(allowAll bool, containers []*Container, externalProcesses []Ext
 
 	policy.Plan9Mounts = plan9Mounts
 
+	policy.Fragments = make([]*fragment, len(fragments))
+	for i, fConf := range fragments {
+		fInternal := fConf.toInternal()
+		policy.Fragments[i] = &fInternal
+	}
+
 	return policy.marshalRego(), nil
 }
 
-func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string) (string, error) {
+func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string, fragments []FragmentConfig) (string, error) {
 	if marshaller == "" {
 		marshaller = defaultMarshaller
 	}
@@ -94,7 +100,7 @@ func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, ex
 	if marshal, ok := registeredMarshallers[marshaller]; !ok {
 		return "", fmt.Errorf("unknown marshaller: %q", marshaller)
 	} else {
-		return marshal(allowAll, containers, externalProcesses, plan9Mounts)
+		return marshal(allowAll, containers, externalProcesses, plan9Mounts, fragments)
 	}
 }
 
@@ -299,8 +305,30 @@ func addPlan9Mounts(builder *strings.Builder, mounts []string) {
 	writeLine(builder, "plan9_mounts := %s", stringArray(mounts).marshalRego())
 }
 
+func (f fragment) marshalRego() string {
+	includes := stringArray(f.includes).marshalRego()
+	return fmt.Sprintf(`{"issuer": "%s", "feed": "%s", "minimum_svn": "%s", "includes": %s`,
+		f.issuer, f.feed, f.minimumSVN, includes)
+}
+
+func addFragments(builder *strings.Builder, fragments []*fragment) {
+	writeLine(builder, "fragments := [")
+
+	for i, fragment := range fragments {
+		end := ","
+		if i == len(fragments)-1 {
+			end = ""
+		}
+
+		writeLine(builder, "%s%s%s", indentUsing, fragment.marshalRego(), end)
+	}
+
+	writeLine(builder, "]")
+}
+
 func (p securityPolicyInternal) marshalRego() string {
 	builder := new(strings.Builder)
+	addFragments(builder, p.Fragments)
 	addContainers(builder, p.Containers)
 	addExternalProcesses(builder, p.ExternalProcesses)
 	addPlan9Mounts(builder, p.Plan9Mounts)
