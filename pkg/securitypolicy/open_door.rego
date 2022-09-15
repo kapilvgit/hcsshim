@@ -10,3 +10,5 @@ exec_in_container := {"allowed": true}
 exec_external := {"allowed": true}
 shutdown_container := {"allowed": true}
 signal_container_process := {"allowed": true}
+plan9_mount := {"allowed": true}
+plan9_unmount := {"allowed": true}

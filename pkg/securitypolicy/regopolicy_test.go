@@ -24,6 +24,8 @@ const (
 	maxGeneratedExternalProcesses      = 12
 	maxGeneratedSandboxIDLength        = 32
 	maxGeneratedEnforcementPointLength = 64
+	maxGeneratedPlan9Mounts            = 8
+	maxPlan9MountTargetLength          = 64
 )
 
 // Validate we do our conversion from Json to rego correctly
@@ -1660,6 +1662,81 @@ func Test_Rego_SignalContainerProcessPolicy_ExecProcess_Bad_ContainerID(t *testi
 	}
 }
 
+func Test_Rego_Plan9MountPolicy(t *testing.T) {
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
+
+	tc, err := setupPlan9MountTest(gc)
+	if err != nil {
+		t.Fatalf("unable to setup test: %v", err)
+	}
+
+	mount := selectPlan9Mount(testRand, gc.plan9Mounts)
+	err = tc.policy.EnforcePlan9MountPolicy(mount)
+	if err != nil {
+		t.Fatalf("Policy enforcement unexpectedly was denied: %v", err)
+	}
+}
+
+func Test_Rego_Plan9MountPolicy_No_Matches(t *testing.T) {
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
+
+	tc, err := setupPlan9MountTest(gc)
+	if err != nil {
+		t.Fatalf("unable to setup test: %v", err)
+	}
+
+	mount := generatePlan9Mount(testRand)
+	err = tc.policy.EnforcePlan9MountPolicy(mount)
+	if err == nil {
+		t.Fatalf("Policy enforcement unexpectedly was allowed")
+	}
+}
+
+func Test_Rego_Plan9UnmountPolicy(t *testing.T) {
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
+
+	tc, err := setupPlan9MountTest(gc)
+	if err != nil {
+		t.Fatalf("unable to setup test: %v", err)
+	}
+
+	mount := selectPlan9Mount(testRand, gc.plan9Mounts)
+	err = tc.policy.EnforcePlan9MountPolicy(mount)
+	if err != nil {
+		t.Fatalf("Couldn't mount as part of setup: %v", err)
+	}
+
+	err = tc.policy.EnforcePlan9UnmountPolicy(mount)
+	if err != nil {
+		t.Fatalf("Policy enforcement unexpectedly was denied: %v", err)
+	}
+}
+
+func Test_Rego_Plan9UnmountPolicy_No_Matches(t *testing.T) {
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
+
+	tc, err := setupPlan9MountTest(gc)
+	if err != nil {
+		t.Fatalf("unable to setup test: %v", err)
+	}
+
+	mount := selectPlan9Mount(testRand, gc.plan9Mounts)
+	err = tc.policy.EnforcePlan9MountPolicy(mount)
+	if err != nil {
+		t.Fatalf("Couldn't mount as part of setup: %v", err)
+	}
+
+	badMount := generatePlan9Mount(testRand)
+	err = tc.policy.EnforcePlan9UnmountPolicy(badMount)
+	if err == nil {
+		t.Fatalf("Policy enforcement unexpectedly was allowed")
+	}
+}
+
 //
 // Setup and "fixtures" follow...
 //
@@ -1684,6 +1761,7 @@ func (constraints *generatedConstraints) toPolicy() *securityPolicyInternal {
 	securityPolicy := new(securityPolicyInternal)
 	securityPolicy.Containers = constraints.containers
 	securityPolicy.ExternalProcesses = constraints.externalProcesses
+	securityPolicy.Plan9Mounts = constraints.plan9Mounts
 	return securityPolicy
 }
 
@@ -1937,6 +2015,42 @@ type regoExternalPolicyTestConfig struct {
 	policy *regoEnforcer
 }
 
+func setupPlan9MountTest(gc *generatedConstraints) (tc *regoPlan9MountTestConfig, err error) {
+	securityPolicy := gc.toPolicy()
+	defaultMounts := generateMounts(testRand)
+	privilegedMounts := generateMounts(testRand)
+
+	policy, err := newRegoPolicy(securityPolicy.marshalRego(),
+		toOCIMounts(defaultMounts),
+		toOCIMounts(privilegedMounts))
+	if err != nil {
+		return nil, err
+	}
+
+	return &regoPlan9MountTestConfig{
+		policy: policy,
+	}, nil
+}
+
+type regoPlan9MountTestConfig struct {
+	policy *regoEnforcer
+}
+
+func generatePlan9Mounts(r *rand.Rand, min int32) []string {
+	var mounts []string
+
+	numberOfMounts := atLeastNAtMostM(r, min, maxGeneratedPlan9Mounts)
+	for i := 0; i < int(numberOfMounts); i++ {
+		mounts = append(mounts, generatePlan9Mount(r))
+	}
+
+	return mounts
+}
+
+func generatePlan9Mount(r *rand.Rand) string {
+	return randVariableString(r, maxPlan9MountTargetLength)
+}
+
 func mountImageForContainer(policy *regoEnforcer, container *securityPolicyContainer) (string, error) {
 	containerID := testDataGenerator.uniqueContainerID()
 
@@ -2100,4 +2214,9 @@ func randChoices(r *rand.Rand, numChoices int, numItems int, replacement bool) [
 	}
 
 	return choices
+}
+
+func selectPlan9Mount(r *rand.Rand, mounts []string) string {
+	numMounts := len(mounts)
+	return mounts[r.Intn(numMounts)]
 }
