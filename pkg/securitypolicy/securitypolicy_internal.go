@@ -10,6 +10,7 @@ import (
 type securityPolicyInternal struct {
 	Containers        []*securityPolicyContainer
 	ExternalProcesses []*externalProcess
+	Plan9Mounts       []string
 }
 
 // Internal version of Container

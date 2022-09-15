@@ -264,6 +264,34 @@ signal_ok(signals) {
     input.signal == signal
 }
 
+plan9_mounted(target) {
+    data.metadata.p9mounts[target]
+}
+
+default plan9_mount := {"allowed": false}
+
+plan9_mount := {"p9mounts": p9mounts, "allowed": true} {
+    not plan9_mounted(input.target)
+    some p9mount in data.policy.plan9_mounts
+    input.target == p9mount
+    p9mounts := {
+        "action": "add",
+        "key": input.target,
+        "value": true
+    }
+}
+
+default plan9_unmount := {"allowed": false}
+
+plan9_unmount := {"p9mounts": p9mounts, "allowed": true} {
+    plan9_mounted(input.target)
+    p9mounts := {
+        "action": "remove",
+        "key": input.target,
+    }
+}
+
+
 default enforcement_point_info := {"available": false, "allowed": false, "unknown": true, "invalid": false}
 
 enforcement_point_info := {"available": available, "allowed": allowed, "unknown": false, "invalid": false} {
@@ -424,4 +452,14 @@ signal_allowed {
 errors["target isn't allowed to receive the signal"] {
     input.rule == "signal_container_process"
     not signal_allowed
+}
+
+errors["device already mounted at path"] {
+    input.rule == "plan9_mount"
+    plan9_mounted(input.target)
+}
+
+errors["no device at path to unmount"] {
+    input.rule == "plan9_unmount"
+    not plan9_mounted(input.unmountTarget)
 }
