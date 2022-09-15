@@ -40,7 +40,8 @@ func init() {
 type SecurityPolicyEnforcer interface {
 	EnforceDeviceMountPolicy(target string, deviceHash string) (err error)
 	EnforceDeviceUnmountPolicy(unmountTarget string) (err error)
-	EnforceOverlayMountPolicy(containerID string, layerPaths []string) (err error)
+	EnforceOverlayMountPolicy(containerID string, layerPaths []string, target string) (err error)
+	EnforceOverlayUnmountPolicy(target string) (err error)
 	EnforceCreateContainerPolicy(sandboxID string, containerID string,
 		argList []string, envList []string, workingDir string, mounts []oci.Mount) (err error)
 	ExtendDefaultMounts([]oci.Mount) error
@@ -342,7 +343,7 @@ func (pe *StandardSecurityPolicyEnforcer) EnforceDeviceUnmountPolicy(unmountTarg
 // "run command" which come with a container ID, we can find the corresponding
 // container index and use that to look up the command in the appropriate
 // security policy container instance.
-func (pe *StandardSecurityPolicyEnforcer) EnforceOverlayMountPolicy(containerID string, layerPaths []string) (err error) {
+func (pe *StandardSecurityPolicyEnforcer) EnforceOverlayMountPolicy(containerID string, layerPaths []string, target string) (err error) {
 	pe.mutex.Lock()
 	defer pe.mutex.Unlock()
 
@@ -471,6 +472,12 @@ func (*StandardSecurityPolicyEnforcer) EnforcePlan9MountPolicy(_ string) error {
 // Stub. We are deprecating the standard enforcer. Newly added enforcement
 // points are simply allowed.
 func (*StandardSecurityPolicyEnforcer) EnforcePlan9UnmountPolicy(_ string) error {
+	return nil
+}
+
+// Stub. We are deprecating the standard enforcer. Newly added enforcement
+// points are simply allowed.
+func (*StandardSecurityPolicyEnforcer) EnforceOverlayUnmountPolicy(_ string) error {
 	return nil
 }
 
@@ -755,7 +762,11 @@ func (OpenDoorSecurityPolicyEnforcer) EnforceDeviceUnmountPolicy(_ string) error
 	return nil
 }
 
-func (OpenDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []string) error {
+func (OpenDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []string, _ string) error {
+	return nil
+}
+
+func (OpenDoorSecurityPolicyEnforcer) EnforceOverlayUnmountPolicy(_ string) error {
 	return nil
 }
 
@@ -809,8 +820,12 @@ func (ClosedDoorSecurityPolicyEnforcer) EnforceDeviceUnmountPolicy(_ string) err
 	return errors.New("unmounting is denied by policy")
 }
 
-func (ClosedDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []string) error {
+func (ClosedDoorSecurityPolicyEnforcer) EnforceOverlayMountPolicy(_ string, _ []string, _ string) error {
 	return errors.New("creating an overlay fs is denied by policy")
+}
+
+func (ClosedDoorSecurityPolicyEnforcer) EnforceOverlayUnmountPolicy(_ string) error {
+	return errors.New("removing an overlay fs is denied by policy")
 }
 
 func (ClosedDoorSecurityPolicyEnforcer) EnforceCreateContainerPolicy(_, _ string, _ []string, _ []string, _ string, _ []oci.Mount) error {
