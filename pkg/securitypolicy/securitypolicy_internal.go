@@ -8,10 +8,10 @@ import (
 
 // Internal version of SecurityPolicy
 type securityPolicyInternal struct {
-	Fragments         []*fragment
 	Containers        []*securityPolicyContainer
 	ExternalProcesses []*externalProcess
 	Plan9Mounts       []string
+	Fragments         []*fragment
 }
 
 // Internal version of Container

@@ -30,9 +30,8 @@ func securityPolicyFromContainers(policyType string, containers []securitypolicy
 	}
 	policyString, err := securitypolicy.MarshalPolicy(policyType, false, pc,
 		[]securitypolicy.ExternalProcessConfig{},
-		[]securitypolicy.Fragment{},
 		[]string{},
-		[]securitypolicy.EnvRuleConfig{})
+		[]securitypolicy.FragmentConfig{})
 	if err != nil {
 		return "", err
 	}

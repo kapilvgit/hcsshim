@@ -951,7 +951,7 @@ func Test_Rego_MountPolicy_MountPrivilegedWhenNotAllowed(t *testing.T) {
 // Tests whether an error is raised if support information is requested for
 // an enforcement point which does not have stored version information.
 func Test_Rego_Version_Unregistered_Enforcement_Point(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 	securityPolicy := gc.toPolicy()
 	policy, err := newRegoPolicy(securityPolicy.marshalRego(), []oci.Mount{}, []oci.Mount{})
 	if err != nil {
@@ -972,7 +972,7 @@ func Test_Rego_Version_Unregistered_Enforcement_Point(t *testing.T) {
 // framework. This should not happen, but may occur during development if
 // version numbers have been entered incorrectly.
 func Test_Rego_Version_Future_Enforcement_Point(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 	securityPolicy := gc.toPolicy()
 	policy, err := newRegoPolicy(securityPolicy.marshalRego(), []oci.Mount{}, []oci.Mount{})
 	if err != nil {
@@ -1370,7 +1370,7 @@ func Test_Rego_ExecExternalProcessPolicy_WorkingDir_No_Match(t *testing.T) {
 }
 
 func Test_Rego_ShutdownContainerPolicy_Running_Container(t *testing.T) {
-	p := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
+	p := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 
 	tc, err := setupRegoRunningContainerTest(p)
 	if err != nil {
@@ -1386,7 +1386,7 @@ func Test_Rego_ShutdownContainerPolicy_Running_Container(t *testing.T) {
 }
 
 func Test_Rego_ShutdownContainerPolicy_Not_Running_Container(t *testing.T) {
-	p := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
+	p := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 
 	tc, err := setupRegoRunningContainerTest(p)
 	if err != nil {
@@ -1723,7 +1723,7 @@ func Test_Rego_SignalContainerProcessPolicy_ExecProcess_Bad_ContainerID(t *testi
 }
 
 func Test_Rego_Plan9MountPolicy(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
 
 	tc, err := setupPlan9MountTest(gc)
@@ -1739,7 +1739,7 @@ func Test_Rego_Plan9MountPolicy(t *testing.T) {
 }
 
 func Test_Rego_Plan9MountPolicy_No_Matches(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
 
 	tc, err := setupPlan9MountTest(gc)
@@ -1755,7 +1755,7 @@ func Test_Rego_Plan9MountPolicy_No_Matches(t *testing.T) {
 }
 
 func Test_Rego_Plan9UnmountPolicy(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
 
 	tc, err := setupPlan9MountTest(gc)
@@ -1776,7 +1776,7 @@ func Test_Rego_Plan9UnmountPolicy(t *testing.T) {
 }
 
 func Test_Rego_Plan9UnmountPolicy_No_Matches(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 	gc.plan9Mounts = generatePlan9Mounts(testRand, 1)
 
 	tc, err := setupPlan9MountTest(gc)
@@ -1799,11 +1799,8 @@ func Test_Rego_Plan9UnmountPolicy_No_Matches(t *testing.T) {
 
 func Test_Rego_LoadFragment(t *testing.T) {
 	f := func(p *generatedConstraints) bool {
-		fragmentConstraints := generateConstraints(testRand,
-			maxContainersInGeneratedConstraints,
-			maxExternalProcessesInGeneratedConstraints,
-			maxFragmentsInGeneratedConstraints,
-			maxGeneratedEnvironmentVariables)
+		p.fragments = generateFragments(testRand)
+		fragmentConstraints := generateConstraints(testRand, maxContainersInGeneratedConstraints)
 		fragmentRego := fragmentConstraints.toPolicy().marshalRego()
 
 		securityPolicy := p.toPolicy()
@@ -1838,8 +1835,7 @@ func Test_Rego_LoadFragment(t *testing.T) {
 		envList := buildEnvironmentVariablesFromEnvRules(container.EnvRules, testRand)
 		sandboxID := testDataGenerator.uniqueSandboxID()
 
-		mounts := container.Mounts
-		mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
+		mountSpec := buildMountSpecFromMountArray(container.Mounts, sandboxID, testRand)
 
 		err = policy.EnforceCreateContainerPolicy(
 			sandboxID,
@@ -1870,12 +1866,23 @@ func Test_Rego_LoadFragment(t *testing.T) {
 func generateExternalProcesses(r *rand.Rand) []*externalProcess {
 	var processes []*externalProcess
 
-	numProcesses := atLeastOneAtMost(r, maxGeneratedExternalProcesses)
+	numProcesses := atLeastOneAtMost(r, maxExternalProcessesInGeneratedConstraints)
 	for i := 0; i < int(numProcesses); i++ {
 		processes = append(processes, generateExternalProcess(r))
 	}
 
 	return processes
+}
+
+func generateFragments(r *rand.Rand) []*fragment {
+	numFragments := atLeastOneAtMost(r, maxFragmentsInGeneratedConstraints)
+
+	fragments := make([]*fragment, numFragments)
+	for i := 0; i < int(numFragments); i++ {
+		fragments[i] = generateFragment(r)
+	}
+
+	return fragments
 }
 
 func selectExternalProcessFromConstraints(constraints *generatedConstraints, r *rand.Rand) *externalProcess {
@@ -1889,7 +1896,6 @@ func (constraints *generatedConstraints) toPolicy() *securityPolicyInternal {
 	securityPolicy.ExternalProcesses = constraints.externalProcesses
 	securityPolicy.Plan9Mounts = constraints.plan9Mounts
 	securityPolicy.Fragments = constraints.fragments
-	securityPolicy.EnvironmentVariableRules = constraints.envRules
 	return securityPolicy
 }
 
@@ -2123,6 +2129,7 @@ type regoRunningContainer struct {
 }
 
 func setupExternalProcessTest(gc *generatedConstraints) (tc *regoExternalPolicyTestConfig, err error) {
+	gc.externalProcesses = generateExternalProcesses(testRand)
 	securityPolicy := gc.toPolicy()
 	defaultMounts := generateMounts(testRand)
 	privilegedMounts := generateMounts(testRand)
@@ -2324,24 +2331,6 @@ func idForRunningContainer(container *securityPolicyContainer, running []regoRun
 func selectSignalFromSignals(r *rand.Rand, signals []syscall.Signal) syscall.Signal {
 	numSignals := len(signals)
 	return signals[r.Intn(numSignals)]
-}
-
-func randChoices(r *rand.Rand, numChoices int, numItems int, replacement bool) []int {
-	if !replacement {
-		shuffle := r.Perm(numItems)
-		if numChoices > numItems {
-			return shuffle
-		}
-
-		return shuffle[:numChoices]
-	}
-
-	choices := make([]int, numChoices)
-	for i := 0; i < numChoices; i++ {
-		choices[i] = r.Intn(numItems)
-	}
-
-	return choices
 }
 
 func selectPlan9Mount(r *rand.Rand, mounts []string) string {

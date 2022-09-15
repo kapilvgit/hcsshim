@@ -13,7 +13,12 @@ import (
 	"syscall"
 )
 
-type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string, fragments []FragmentConfig) (string, error)
+type marshalFunc func(
+	allowAll bool,
+	containers []*Container,
+	externalProcesses []ExternalProcessConfig,
+	plan9Mounts []string,
+	fragments []FragmentConfig) (string, error)
 
 const (
 	jsonMarshaller = "json"
@@ -36,7 +41,11 @@ var policyRegoTemplate string
 //go:embed open_door.rego
 var openDoorRegoTemplate string
 
-func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConfig, _ []string, _ []FragmentConfig) (string, error) {
+func marshalJSON(
+	allowAll bool,
+	containers []*Container,
+	_ []ExternalProcessConfig,
+	_ []string, _ []FragmentConfig) (string, error) {
 	var policy *SecurityPolicy
 	if allowAll {
 		if len(containers) > 0 {
@@ -56,7 +65,12 @@ func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConf
 	return string(policyCode), nil
 }
 
-func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string, fragments []FragmentConfig) (string, error) {
+func marshalRego(
+	allowAll bool,
+	containers []*Container,
+	externalProcesses []ExternalProcessConfig,
+	plan9Mounts []string,
+	fragments []FragmentConfig) (string, error) {
 	if allowAll {
 		if len(containers) > 0 {
 			return "", ErrInvalidOpenDoorPolicy
@@ -89,12 +103,16 @@ func marshalRego(allowAll bool, containers []*Container, externalProcesses []Ext
 		policy.Fragments[i] = &fInternal
 	}
 
-	policy.EnvironmentVariableRules = envRules
-
 	return policy.marshalRego(), nil
 }
 
-func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, plan9Mounts []string, fragments []FragmentConfig) (string, error) {
+func MarshalPolicy(
+	marshaller string,
+	allowAll bool,
+	containers []*Container,
+	externalProcesses []ExternalProcessConfig,
+	plan9Mounts []string,
+	fragments []FragmentConfig) (string, error) {
 	if marshaller == "" {
 		marshaller = defaultMarshaller
 	}
@@ -330,14 +348,6 @@ func addFragments(builder *strings.Builder, fragments []*fragment) {
 	}
 
 	writeLine(builder, "]")
-}
-
-func addEnvRules(builder *strings.Builder, envRules []EnvRuleConfig) {
-	if len(envRules) == 0 {
-		return
-	}
-
-	writeLine(builder, "env_rules := %s", envRuleArray(envRules).marshalRego())
 }
 
 func (p securityPolicyInternal) marshalRego() string {

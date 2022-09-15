@@ -30,7 +30,6 @@ type PolicyConfig struct {
 	ExternalProcesses []ExternalProcessConfig `json:"external_processes" toml:"external_process"`
 	Plan9Mounts       []string                `json:"plan9_mounts" toml:"plan9_mounts"`
 	Fragments         []FragmentConfig        `json:"fragments" toml:"fragment"`
-	EnvRules          []EnvRuleConfig         `json:"env_rules" toml:"env_rule"`
 }
 
 // ExternalProcessConfig contains toml or JSON config for running external processes in the UVM.

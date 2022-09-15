@@ -108,24 +108,12 @@ command_ok(command) {
     }
 }
 
-envRule_ok(pattern, "string", value) {
+env_ok(pattern, "string", value) {
     pattern == value
 }
 
-envRule_ok(pattern, "re2", value) {
+env_ok(pattern, "re2", value) {
     regex.match(pattern, value)
-}
-
-env_ok(env_rules, value) {
-    some rule in env_rules
-    envRule_ok(rule.pattern, rule.strategy, value)
-}
-
-env_ok(env_rules, value) {
-    some iss in data.metadata.issuers
-    some feed in iss.feeds
-    some rule in feed.env_rules
-    envRule_ok(rule.pattern, rule.strategy, value)
 }
 
 rule_ok(rule, env) {
@@ -139,7 +127,8 @@ rule_ok(rule, env) {
 
 envList_ok(env_rules) {
     every env in input.envList {
-        env_ok(env_rules, env)
+        some rule in env_rules
+        env_ok(rule.pattern, rule.strategy, env)
     }
 
     every rule in env_rules {
@@ -366,18 +355,18 @@ fragment_containers := data[input.namespace].containers
 default fragment_fragments := []
 fragment_fragments := data[input.namespace].fragments
 
-default fragment_env_rules := []
-fragment_env_rules := data[input.namespace].env_rules
-
 default fragment_external_processes := []
 fragment_external_processes := data[input.namespace].external_processes
+
+default fragment_plan9_mounts := []
+fragment_plan9_mounts := data[input.namespace].plan9_mounts
 
 extract_feed(includes) := feed {
     objects := {
         "containers": fragment_containers,
         "fragments": fragment_fragments,
-        "env_rules": fragment_env_rules,
-        "external_processes": fragment_external_processes
+        "external_processes": fragment_external_processes,
+        "plan9_mounts": fragment_plan9_mounts
     }
 
     feed := {
