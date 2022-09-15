@@ -176,7 +176,7 @@ func Test_Rego_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
 			return false
 		}
 
-		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers)
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, testDataGenerator.uniqueMountTarget())
 
 		if err == nil {
 			return false
@@ -204,7 +204,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 			return false
 		}
 
-		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers)
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, testDataGenerator.uniqueMountTarget())
 
 		// getting an error means something is broken
 		return err == nil
@@ -242,7 +242,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_With_Same_Root_Hash(t *testing.T
 		t.Fatalf("error creating valid overlay: %v", err)
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, layers)
+	err = policy.EnforceOverlayMountPolicy(containerID, layers, testDataGenerator.uniqueMountTarget())
 	if err != nil {
 		t.Fatalf("Unable to create an overlay where root hashes are the same")
 	}
@@ -292,7 +292,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_Shared_Layers(t *testing.T) {
 		containerOneOverlay[len(containerOneOverlay)-i-1] = mount
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, containerOneOverlay)
+	err = policy.EnforceOverlayMountPolicy(containerID, containerOneOverlay, testDataGenerator.uniqueMountTarget())
 	if err != nil {
 		t.Fatalf("Unexpected error mounting overlay: %v", err)
 	}
@@ -321,7 +321,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Layers_Shared_Layers(t *testing.T) {
 		containerTwoOverlay[len(containerTwoOverlay)-i-1] = mount
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, containerTwoOverlay)
+	err = policy.EnforceOverlayMountPolicy(containerID, containerTwoOverlay, testDataGenerator.uniqueMountTarget())
 	if err != nil {
 		t.Fatalf("Unexpected error mounting overlay: %v", err)
 	}
@@ -342,12 +342,12 @@ func Test_Rego_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testi
 			return false
 		}
 
-		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, testDataGenerator.uniqueMountTarget()); err != nil {
 			t.Errorf("expected nil error got: %v", err)
 			return false
 		}
 
-		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err == nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, testDataGenerator.uniqueMountTarget()); err == nil {
 			t.Errorf("able to create overlay for the same container twice")
 			return false
 		} else {
@@ -387,7 +387,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Reusing_ID_Across_Overlays(t *testing.T
 		t.Fatalf("Unexpected error creating valid overlay: %v", err)
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths, testDataGenerator.uniqueMountTarget())
 	if err != nil {
 		t.Fatalf("Unexpected error mounting overlay filesystem: %v", err)
 	}
@@ -398,7 +398,7 @@ func Test_Rego_EnforceOverlayMountPolicy_Reusing_ID_Across_Overlays(t *testing.T
 		t.Fatalf("Unexpected error creating valid overlay: %v", err)
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths, testDataGenerator.uniqueMountTarget())
 	if err == nil {
 		t.Fatalf("Unexpected success mounting overlay filesystem")
 	}
@@ -437,11 +437,70 @@ func Test_Rego_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *te
 			}
 
 			id := testDataGenerator.uniqueContainerID()
-			err = policy.EnforceOverlayMountPolicy(id, layerPaths)
+			err = policy.EnforceOverlayMountPolicy(id, layerPaths, testDataGenerator.uniqueMountTarget())
 			if err != nil {
 				t.Fatalf("failed with %d containers", containersToCreate)
 			}
 		}
+	}
+}
+
+func Test_Rego_EnforceOverlayUnmountPolicy(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupRegoOverlayTest(p, true)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		target := testDataGenerator.uniqueMountTarget()
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, target)
+		if err != nil {
+			t.Errorf("Failure setting up overlay for testing: %v", err)
+			return false
+		}
+
+		err = tc.policy.EnforceOverlayUnmountPolicy(target)
+		if err != nil {
+			t.Errorf("Unexpected policy enforcement failure: %v", err)
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50, Rand: testRand}); err != nil {
+		t.Errorf("Test_Rego_EnforceOverlayUnmountPolicy: %v", err)
+	}
+}
+
+func Test_Rego_EnforceOverlayUnmountPolicy_No_Matches(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		tc, err := setupRegoOverlayTest(p, true)
+		if err != nil {
+			t.Error(err)
+			return false
+		}
+
+		target := testDataGenerator.uniqueMountTarget()
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, target)
+		if err != nil {
+			t.Errorf("Failure setting up overlay for testing: %v", err)
+			return false
+		}
+
+		badTarget := testDataGenerator.uniqueMountTarget()
+		err = tc.policy.EnforceOverlayUnmountPolicy(badTarget)
+		if err == nil {
+			t.Errorf("Unexpected policy enforcement success: %v", err)
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50, Rand: testRand}); err != nil {
+		t.Errorf("Test_Rego_EnforceOverlayUnmountPolicy: %v", err)
 	}
 }
 
@@ -2060,7 +2119,7 @@ func mountImageForContainer(policy *regoEnforcer, container *securityPolicyConta
 	}
 
 	// see NOTE_TESTCOPY
-	err = policy.EnforceOverlayMountPolicy(containerID, copyStrings(layerPaths))
+	err = policy.EnforceOverlayMountPolicy(containerID, copyStrings(layerPaths), testDataGenerator.uniqueMountTarget())
 	if err != nil {
 		return "", fmt.Errorf("error mounting filesystem: %w", err)
 	}
