@@ -89,6 +89,8 @@ func marshalRego(allowAll bool, containers []*Container, externalProcesses []Ext
 		policy.Fragments[i] = &fInternal
 	}
 
+	policy.EnvironmentVariableRules = envRules
+
 	return policy.marshalRego(), nil
 }
 
@@ -307,11 +309,15 @@ func addPlan9Mounts(builder *strings.Builder, mounts []string) {
 
 func (f fragment) marshalRego() string {
 	includes := stringArray(f.includes).marshalRego()
-	return fmt.Sprintf(`{"issuer": "%s", "feed": "%s", "minimum_svn": "%s", "includes": %s`,
+	return fmt.Sprintf(`{"issuer": "%s", "feed": "%s", "minimum_svn": "%s", "includes": %s}`,
 		f.issuer, f.feed, f.minimumSVN, includes)
 }
 
 func addFragments(builder *strings.Builder, fragments []*fragment) {
+	if len(fragments) == 0 {
+		return
+	}
+
 	writeLine(builder, "fragments := [")
 
 	for i, fragment := range fragments {
@@ -324,6 +330,14 @@ func addFragments(builder *strings.Builder, fragments []*fragment) {
 	}
 
 	writeLine(builder, "]")
+}
+
+func addEnvRules(builder *strings.Builder, envRules []EnvRuleConfig) {
+	if len(envRules) == 0 {
+		return
+	}
+
+	writeLine(builder, "env_rules := %s;", envRuleArray(envRules).marshalRego())
 }
 
 func (p securityPolicyInternal) marshalRego() string {

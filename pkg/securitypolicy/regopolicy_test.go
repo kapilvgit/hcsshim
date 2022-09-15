@@ -950,7 +950,7 @@ func Test_Rego_MountPolicy_MountPrivilegedWhenNotAllowed(t *testing.T) {
 // Tests whether an error is raised if support information is requested for
 // an enforcement point which does not have stored version information.
 func Test_Rego_Version_Unregistered_Enforcement_Point(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
 	securityPolicy := gc.toPolicy()
 	policy, err := newRegoPolicy(securityPolicy.marshalRego(), []oci.Mount{}, []oci.Mount{})
 	if err != nil {
@@ -971,7 +971,7 @@ func Test_Rego_Version_Unregistered_Enforcement_Point(t *testing.T) {
 // framework. This should not happen, but may occur during development if
 // version numbers have been entered incorrectly.
 func Test_Rego_Version_Future_Enforcement_Point(t *testing.T) {
-	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
 	securityPolicy := gc.toPolicy()
 	policy, err := newRegoPolicy(securityPolicy.marshalRego(), []oci.Mount{}, []oci.Mount{})
 	if err != nil {
@@ -1369,7 +1369,7 @@ func Test_Rego_ExecExternalProcessPolicy_WorkingDir_No_Match(t *testing.T) {
 }
 
 func Test_Rego_ShutdownContainerPolicy_Running_Container(t *testing.T) {
-	p := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	p := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
 
 	tc, err := setupRegoRunningContainerTest(p)
 	if err != nil {
@@ -1385,7 +1385,7 @@ func Test_Rego_ShutdownContainerPolicy_Running_Container(t *testing.T) {
 }
 
 func Test_Rego_ShutdownContainerPolicy_Not_Running_Container(t *testing.T) {
-	p := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	p := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariables)
 
 	tc, err := setupRegoRunningContainerTest(p)
 	if err != nil {
@@ -1797,6 +1797,66 @@ func Test_Rego_Plan9UnmountPolicy_No_Matches(t *testing.T) {
 }
 
 func Test_Rego_LoadFragment(t *testing.T) {
+	f := func(p *generatedConstraints) bool {
+		fragmentConstraints := generateConstraints(testRand,
+			maxContainersInGeneratedConstraints,
+			maxExternalProcessesInGeneratedConstraints,
+			maxFragmentsInGeneratedConstraints,
+			maxGeneratedEnvironmentVariables)
+		fragmentRego := fragmentConstraints.toPolicy().marshalRego()
+
+		securityPolicy := p.toPolicy()
+		numFragments := len(securityPolicy.Fragments)
+		fragment := securityPolicy.Fragments[testRand.Intn(numFragments)]
+		fragment.includes = []string{"container"}
+		fragment.minimumSVN = "1.0.0"
+		fragmentHeader := fmt.Sprintf("package %s\n\nsvn := 1.0.0\n", randString(testRand, maxGeneratedFragmentNamespaceLength))
+		fragmentRego = strings.Replace(fragmentRego, "package policy", fragmentHeader, 1)
+		policy, err := newRegoPolicy(securityPolicy.marshalRego(), []oci.Mount{}, []oci.Mount{})
+		if err != nil {
+			t.Error("unable to create policy: %w", err)
+			return false
+		}
+
+		err = policy.LoadFragment(fragment.issuer, fragment.feed, fragmentRego)
+		if err != nil {
+			t.Error("unable to load fragment: %w", err)
+			return false
+		}
+
+		container := selectContainerFromConstraints(fragmentConstraints, testRand)
+
+		containerID, err := mountImageForContainer(policy, container)
+		if err != nil {
+			t.Error("unable to mount image for container: %w", err)
+			return false
+		}
+
+		envList := buildEnvironmentVariablesFromEnvRules(container.EnvRules, testRand)
+		sandboxID := testDataGenerator.uniqueSandboxID()
+
+		mounts := container.Mounts
+		mountSpec := buildMountSpecFromMountArray(mounts, sandboxID, testRand)
+
+		err = policy.EnforceCreateContainerPolicy(
+			sandboxID,
+			containerID,
+			copyStrings(container.Command),
+			copyStrings(envList),
+			container.WorkingDir,
+			copyMounts(mountSpec.Mounts))
+
+		if err != nil {
+			t.Error("unable to create container from fragment: %w", err)
+			return false
+		}
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{MaxCount: 50, Rand: testRand}); err != nil {
+		t.Errorf("Test_Rego_LoadFragment: %v", err)
+	}
 
 }
 
@@ -1825,6 +1885,8 @@ func (constraints *generatedConstraints) toPolicy() *securityPolicyInternal {
 	securityPolicy.Containers = constraints.containers
 	securityPolicy.ExternalProcesses = constraints.externalProcesses
 	securityPolicy.Plan9Mounts = constraints.plan9Mounts
+	securityPolicy.Fragments = constraints.fragments
+	securityPolicy.EnvironmentVariableRules = constraints.envRules
 	return securityPolicy
 }
 

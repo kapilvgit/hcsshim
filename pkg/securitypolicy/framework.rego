@@ -369,11 +369,15 @@ fragment_fragments := data[input.namespace].fragments
 default fragment_env_rules := []
 fragment_env_rules := data[input.namespace].env_rules
 
+default fragment_external_processes := []
+fragment_external_processes := data[input.namespace].external_processes
+
 extract_feed(includes) := feed {
     objects := {
         "containers": fragment_containers,
         "fragments": fragment_fragments,
-        "env_rules": fragment_env_rules
+        "env_rules": fragment_env_rules,
+        "external_processes": fragment_external_processes
     }
 
     feed := {

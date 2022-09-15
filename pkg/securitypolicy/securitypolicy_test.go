@@ -24,6 +24,7 @@ const (
 	minStringLength                            = 10
 	maxContainersInGeneratedConstraints        = 32
 	maxExternalProcessesInGeneratedConstraints = 16
+	maxFragmentsInGeneratedConstraints         = 4
 	maxLayersInGeneratedContainer              = 32
 	maxGeneratedContainerID                    = 1000000
 	maxGeneratedCommandLength                  = 128
@@ -31,6 +32,9 @@ const (
 	maxGeneratedEnvironmentVariables           = 24
 	maxGeneratedEnvironmentVariableRuleLength  = 64
 	maxGeneratedEnvironmentVariableRules       = 12
+	maxGeneratedFragmentFeedLength             = 256
+	maxGeneratedFragmentIssuerLength           = 16
+	maxGeneratedFragmentNamespaceLength        = 32
 	maxGeneratedMountTargetLength              = 256
 	rootHashLength                             = 64
 	maxGeneratedMounts                         = 4
@@ -40,6 +44,7 @@ const (
 	maxGeneratedMountOptionLength              = 32
 	maxGeneratedExecProcesses                  = 12
 	maxGeneratedWorkingDirLength               = 128
+	maxGeneratedVersion                        = 10
 	maxSignalNumber                            = 64
 	// additional consts
 	// the standard enforcer tests don't do anything with the encoded policy
@@ -244,7 +249,7 @@ func Test_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 
 // Tests the specific case of trying to mount the same overlay twice using the /// same container id. This should be disallowed.
 func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
-	gc := generateConstraints(testRand, 1, 0)
+	gc := generateConstraints(testRand, 1, 0, 0, 0)
 	tc, err := setupContainerWithOverlay(gc, true)
 	if err != nil {
 		t.Fatalf("expected nil error got: %v", err)
@@ -299,7 +304,7 @@ func Test_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing
 // policy, we should be able to create a single container for that overlay
 // but no more than that one.
 func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice_With_Different_IDs(t *testing.T) {
-	p := generateConstraints(testRand, 1, 0)
+	p := generateConstraints(testRand, 1, 0, 0, 0)
 	sp := NewStandardSecurityPolicyEnforcer(p.containers, ignoredEncodedPolicyString)
 
 	var containerIDOne, containerIDTwo string
@@ -501,7 +506,7 @@ func Test_EnforceEnvironmentVariablePolicy_Matches(t *testing.T) {
 }
 
 func Test_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
-	p := generateConstraints(testRand, 1, 0)
+	p := generateConstraints(testRand, 1, 0, 0, 0)
 
 	container := generateConstraintsContainer(testRand, 1, 1)
 	// add a rule to re2 match
@@ -854,7 +859,7 @@ func (*SecurityPolicy) Generate(r *rand.Rand, _ int) reflect.Value {
 }
 
 func (*generatedConstraints) Generate(r *rand.Rand, _ int) reflect.Value {
-	c := generateConstraints(r, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	c := generateConstraints(r, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints, maxFragmentsInGeneratedConstraints, maxGeneratedEnvironmentVariableRules)
 	return reflect.ValueOf(c)
 }
 
@@ -892,7 +897,7 @@ func setupContainerWithOverlay(gc *generatedConstraints, valid bool) (tc *testCo
 	}, nil
 }
 
-func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses int32) *generatedConstraints {
+func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses int32, maxFragments int32, maxEnvironmentVariableRules int32) *generatedConstraints {
 	var containers []*securityPolicyContainer
 
 	numContainers := (int)(atLeastOneAtMost(r, maxContainers))
@@ -911,10 +916,34 @@ func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses
 		externalProcesses = append(externalProcesses, generateExternalProcess(r))
 	}
 
+	var fragments []*fragment
+
+	numFragments := 0
+	if maxFragments >= 1 {
+		numFragments = (int)(atLeastOneAtMost(r, maxFragments))
+	}
+
+	for i := 0; i < numFragments; i++ {
+		fragments = append(fragments, generateFragment(r))
+	}
+
+	var envRules []EnvRuleConfig
+
+	numEnvRules := 0
+	if maxEnvironmentVariableRules >= 1 {
+		numEnvRules = (int)(atLeastOneAtMost(r, maxEnvironmentVariableRules))
+	}
+
+	for i := 0; i < numEnvRules; i++ {
+		envRules = append(envRules, generateEnvRuleConfig(r))
+	}
+
 	return &generatedConstraints{
 		containers:        containers,
 		externalProcesses: externalProcesses,
 		plan9Mounts:       make([]string, 0),
+		fragments:         fragments,
+		envRules:          envRules,
 	}
 }
 
@@ -982,14 +1011,17 @@ func generateEnvironmentVariableRules(r *rand.Rand) []EnvRuleConfig {
 
 	numArgs := atLeastOneAtMost(r, maxGeneratedEnvironmentVariableRules)
 	for i := 0; i < int(numArgs); i++ {
-		rule := EnvRuleConfig{
-			Strategy: "string",
-			Rule:     randVariableString(r, maxGeneratedEnvironmentVariableRuleLength),
-		}
-		rules = append(rules, rule)
+		rules = append(rules, generateEnvRuleConfig(r))
 	}
 
 	return rules
+}
+
+func generateEnvRuleConfig(r *rand.Rand) EnvRuleConfig {
+	return EnvRuleConfig{
+		Strategy: "string",
+		Rule:     randVariableString(r, maxGeneratedEnvironmentVariableRuleLength),
+	}
 }
 
 func generateExecProcesses(r *rand.Rand) []containerExecProcess {
@@ -1137,6 +1169,25 @@ func generateListOfSignals(r *rand.Rand, atLeast int32, atMost int32) []syscall.
 
 func generateSignal(r *rand.Rand) syscall.Signal {
 	return syscall.Signal(atLeastOneAtMost(r, maxSignalNumber))
+}
+
+func generateFragment(r *rand.Rand) *fragment {
+	possibleIncludes := []string{"containers", "fragments", "env_rules", "external_processes"}
+	numChoices := int(atLeastOneAtMost(r, int32(len(possibleIncludes))))
+	includes := randChooseStrings(r, possibleIncludes, numChoices, false)
+	return &fragment{
+		issuer:     randString(r, maxGeneratedFragmentIssuerLength),
+		feed:       randString(r, maxGeneratedFragmentFeedLength),
+		minimumSVN: generateSVN(r),
+		includes:   includes,
+	}
+}
+
+func generateSVN(r *rand.Rand) string {
+	major := randMinMax(r, 0, maxGeneratedVersion)
+	minor := randMinMax(r, 0, maxGeneratedVersion)
+	patch := randMinMax(r, 0, maxGeneratedVersion)
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
 }
 
 func selectContainerFromConstraints(constraints *generatedConstraints, r *rand.Rand) *securityPolicyContainer {
@@ -1300,6 +1351,34 @@ func randMinMax(r *rand.Rand, min int32, max int32) int32 {
 	return r.Int31n(max-min+1) + min
 }
 
+func randChoices(r *rand.Rand, numChoices int, numItems int, replacement bool) []int {
+	if !replacement {
+		shuffle := r.Perm(numItems)
+		if numChoices > numItems {
+			return shuffle
+		}
+
+		return shuffle[:numChoices]
+	}
+
+	choices := make([]int, numChoices)
+	for i := 0; i < numChoices; i++ {
+		choices[i] = r.Intn(numItems)
+	}
+
+	return choices
+}
+
+func randChooseStrings(r *rand.Rand, items []string, numChoices int, replacement bool) []string {
+	numItems := len(items)
+	choiceIndices := randChoices(r, numChoices, numItems, false)
+	choices := make([]string, numChoices)
+	for i, index := range choiceIndices {
+		choices[i] = items[index]
+	}
+	return choices
+}
+
 func atLeastNAtMostM(r *rand.Rand, min, max int32) int32 {
 	return randMinMax(r, min, max)
 }
@@ -1316,6 +1395,8 @@ type generatedConstraints struct {
 	containers        []*securityPolicyContainer
 	externalProcesses []*externalProcess
 	plan9Mounts       []string
+	fragments         []*fragment
+	envRules          []EnvRuleConfig
 }
 
 type containerInitProcess struct {
