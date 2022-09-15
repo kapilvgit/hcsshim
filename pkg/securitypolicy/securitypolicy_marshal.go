@@ -337,7 +337,7 @@ func addEnvRules(builder *strings.Builder, envRules []EnvRuleConfig) {
 		return
 	}
 
-	writeLine(builder, "env_rules := %s;", envRuleArray(envRules).marshalRego())
+	writeLine(builder, "env_rules := %s", envRuleArray(envRules).marshalRego())
 }
 
 func (p securityPolicyInternal) marshalRego() string {

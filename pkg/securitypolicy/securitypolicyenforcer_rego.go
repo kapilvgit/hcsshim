@@ -260,6 +260,7 @@ func (policy *regoEnforcer) query(enforcementPoint string, input map[string]inte
 		rego.Query(fmt.Sprintf("data.policy.%s", enforcementPoint)),
 		rego.Input(input),
 		rego.Store(store),
+		rego.EnablePrintStatements(policy.debug),
 		rego.PrintHook(topdown.NewPrintHook(&buf)))
 
 	if policy.compiledModules == nil {
@@ -535,7 +536,7 @@ func (policy *regoEnforcer) enforce(enforcementPoint string, input map[string]in
 		}
 
 		if enforcementPoint == "load_fragment" {
-			id := input["iss"].(string) + ">" + input["feed"].(string)
+			id := input["issuer"].(string) + ">" + input["feed"].(string)
 			if add_module, ok := results["add_module"].(bool); ok {
 				if !add_module {
 					delete(policy.modules, id)
@@ -749,7 +750,7 @@ func (policy *regoEnforcer) LoadFragment(issuer string, feed string, rego string
 	policy.compiledModules = nil
 
 	input := map[string]interface{}{
-		"iss":       issuer,
+		"issuer":    issuer,
 		"feed":      feed,
 		"namespace": namespace,
 	}

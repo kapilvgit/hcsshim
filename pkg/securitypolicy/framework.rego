@@ -390,7 +390,7 @@ issuer_exists(iss) {
 }
 
 update_issuer(includes) := issuer {
-    old_feeds := data.metadata.issuers[input.iss]
+    old_feeds := data.metadata.issuers[input.issuer]
     new_feed := {
         "feeds": {
             input.feed: extract_feed(includes)
@@ -400,7 +400,7 @@ update_issuer(includes) := issuer {
 }
 
 update_issuer(includes) := issuer {
-    not issuer_exists(input.iss)
+    not issuer_exists(input.issuer)
     issuer := {
         "feeds": {
             input.feed: extract_feed(includes)
@@ -437,7 +437,7 @@ load_fragment := {"issuers": issuers, "add_module": add_module, "allowed": true}
     issuer := update_issuer(fragment.includes)
     issuers := {
         "action": "update",
-        "key": input.iss,
+        "key": input.issuer,
         "value": issuer
     }
 

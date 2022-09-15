@@ -21,11 +21,12 @@ import (
 
 const (
 	// variables that influence generated rego-only test fixtures
-	maxGeneratedExternalProcesses      = 12
-	maxGeneratedSandboxIDLength        = 32
-	maxGeneratedEnforcementPointLength = 64
-	maxGeneratedPlan9Mounts            = 8
-	maxPlan9MountTargetLength          = 64
+	maxGeneratedExternalProcesses       = 12
+	maxGeneratedFragmentNamespaceLength = 32
+	maxGeneratedSandboxIDLength         = 32
+	maxGeneratedEnforcementPointLength  = 64
+	maxGeneratedPlan9Mounts             = 8
+	maxPlan9MountTargetLength           = 64
 )
 
 // Validate we do our conversion from Json to rego correctly
@@ -1808,9 +1809,11 @@ func Test_Rego_LoadFragment(t *testing.T) {
 		securityPolicy := p.toPolicy()
 		numFragments := len(securityPolicy.Fragments)
 		fragment := securityPolicy.Fragments[testRand.Intn(numFragments)]
-		fragment.includes = []string{"container"}
-		fragment.minimumSVN = "1.0.0"
-		fragmentHeader := fmt.Sprintf("package %s\n\nsvn := 1.0.0\n", randString(testRand, maxGeneratedFragmentNamespaceLength))
+		fragment.includes = []string{"containers"}
+		fragmentHeader := fmt.Sprintf(
+			"package %s\n\nsvn := \"%s\"\n",
+			generateFragmentNamespace(testRand),
+			fragment.minimumSVN)
 		fragmentRego = strings.Replace(fragmentRego, "package policy", fragmentHeader, 1)
 		policy, err := newRegoPolicy(securityPolicy.marshalRego(), []oci.Mount{}, []oci.Mount{})
 		if err != nil {
@@ -1854,7 +1857,7 @@ func Test_Rego_LoadFragment(t *testing.T) {
 		return true
 	}
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 50, Rand: testRand}); err != nil {
+	if err := quick.Check(f, &quick.Config{MaxCount: 25, Rand: testRand}); err != nil {
 		t.Errorf("Test_Rego_LoadFragment: %v", err)
 	}
 
@@ -2344,4 +2347,8 @@ func randChoices(r *rand.Rand, numChoices int, numItems int, replacement bool) [
 func selectPlan9Mount(r *rand.Rand, mounts []string) string {
 	numMounts := len(mounts)
 	return mounts[r.Intn(numMounts)]
+}
+
+func generateFragmentNamespace(r *rand.Rand) string {
+	return randChar(r) + randVariableString(r, maxGeneratedFragmentNamespaceLength)
 }

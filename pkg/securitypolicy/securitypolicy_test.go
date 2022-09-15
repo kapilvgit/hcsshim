@@ -34,7 +34,6 @@ const (
 	maxGeneratedEnvironmentVariableRules       = 12
 	maxGeneratedFragmentFeedLength             = 256
 	maxGeneratedFragmentIssuerLength           = 16
-	maxGeneratedFragmentNamespaceLength        = 32
 	maxGeneratedMountTargetLength              = 256
 	rootHashLength                             = 64
 	maxGeneratedMounts                         = 4
