@@ -6,6 +6,7 @@ package hcsv2
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,6 +35,7 @@ import (
 	"github.com/Microsoft/hcsshim/internal/protocol/guestrequest"
 	"github.com/Microsoft/hcsshim/internal/protocol/guestresource"
 	"github.com/Microsoft/hcsshim/pkg/annotations"
+	"github.com/Microsoft/hcsshim/pkg/cosesign1"
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 	"github.com/mattn/go-shellwords"
 	"github.com/pkg/errors"
@@ -122,7 +124,29 @@ func (h *Host) SetConfidentialUVMOptions(enforcerType string, base64EncodedPolic
 //
 // TODO (maksiman): add fragment validation and injection logic
 func (*Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
-	log.G(ctx).WithField("fragment", fragment).Debug("fragment received in guest")
+	log.G(ctx).WithField("fragment", fmt.Sprintf("%+v", fragment)).Debug("GCS Host.InjectFragment")
+
+	raw, err := base64.StdEncoding.DecodeString(fragment.Fragment)
+	if err != nil {
+		return err
+	}
+	blob := []byte(fragment.Fragment)
+	os.WriteFile("/tmp/fragment.blob", blob, 0644)
+
+	var result map[string]string
+	result, err = cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil, false, true) // params raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool
+
+	if err != nil {
+		return fmt.Errorf("InjectFragment failed: %s", err.Error())
+	} else {
+		log.G(ctx).Printf("iss:\n%s\n", result["iss"])
+		log.G(ctx).Printf("cty:\n%s\n", result["cty"])
+		log.G(ctx).Printf("pubkey:\n%s\n", result["pubkey"])
+		log.G(ctx).Printf("payload:\n%s\n", result["payload"])
+		// now offer the payload fragment to the policy
+		// h.securityPolicyEnforcer.OfferFragment(result)
+
+	}
 	return nil
 }
 
