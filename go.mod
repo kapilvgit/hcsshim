@@ -32,7 +32,6 @@ require (
 	golang.org/x/sync v0.0.0-20220601150217-0de741cfad7f
 	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad
 	google.golang.org/grpc v1.47.0
-	github.com/veraison/go-cose v1.0.0-rc.1
 )
 
 require (
@@ -68,8 +67,6 @@ require (
 	google.golang.org/genproto v0.0.0-20220107163113-42d7afdf6368 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	github.com/fxamacker/cbor/v2 v2.4.0 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
 )
 
 replace (
