@@ -465,13 +465,6 @@ errors["overlay has already been mounted"] {
     overlay_exists
 }
 
-default overlay_matches := false
-
-overlay_matches {
-    some container in data.policy.containers
-    layerPaths_ok(container.layers)
-}
-
 errors["no overlay at path to unmount"] {
     input.rule == "unmount_overlay"
     not overlay_mounted(input.unmountTarget)
