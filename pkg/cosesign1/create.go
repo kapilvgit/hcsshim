@@ -12,18 +12,17 @@ import (
 	"github.com/veraison/go-cose"
 )
 
-func CreateCoseSign1(payloadFilename string, contentType string, chainFilename string, keyFilename string, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
+func CreateCoseSign1(payloadBlob []byte, contentType string, chainPem []byte, keyPem []byte, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
 	var err error
-	var payloadBlob []byte = ReadBlob(payloadFilename)
 
 	var remaining []byte
 	var result []byte
 
 	var signingKey any
-	var keyPem []byte = ReadBlob(keyFilename)
 	var keyDer *pem.Block
 	keyDer, remaining = pem.Decode(keyPem)
-	var keyBytes []byte = keyDer.Bytes
+	_ = remaining
+	var keyBytes = keyDer.Bytes
 
 	signingKey, err = x509.ParsePKCS8PrivateKey(keyBytes)
 	if err == nil {
@@ -44,17 +43,17 @@ func CreateCoseSign1(payloadFilename string, contentType string, chainFilename s
 		}
 	}
 
-	var chainPem []byte = ReadBlob(chainFilename)
 	var chainDer *pem.Block
 	chainDer, remaining = pem.Decode(chainPem)
-	var chainBytes []byte = chainDer.Bytes
+	_ = remaining
+	var chainBytes = chainDer.Bytes
 	var chainKey any
 
 	var chainCert *x509.Certificate
 	chainCert, err = x509.ParseCertificate(chainBytes)
 	if err == nil {
 		if verbose {
-			log.Printf("parsed as cert %q\n", *chainCert)
+			log.Printf("parsed as cert %v\n", *chainCert)
 		}
 		chainKey = chainCert.PublicKey
 	} else {
@@ -74,7 +73,7 @@ func CreateCoseSign1(payloadFilename string, contentType string, chainFilename s
 		saltReader = NewFixedReader(0)
 	}
 
-	var cryptoSigner crypto.Signer = signingKey.(crypto.Signer)
+	var cryptoSigner = signingKey.(crypto.Signer)
 
 	var signer cose.Signer
 	signer, err = cose.NewSigner(algo, cryptoSigner)

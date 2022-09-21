@@ -4,6 +4,8 @@ import (
 	_ "embed"
 	"testing"
 	"testing/quick"
+
+	"github.com/veraison/go-cose"
 )
 
 //go:embed fragment.rego
@@ -40,6 +42,7 @@ func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 		var iss = resultsMap["iss"]
 		var cty = resultsMap["cty"]
 		var payload = resultsMap["payload"]
+		_ = resultsMap["pubkey"]
 
 		//var leafCertPem = begin + LeafCertBody + end
 
@@ -62,7 +65,8 @@ func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 
 func Test_CreateCoseSign1Fragment(t *testing.T) {
 	f := func() bool {
-		var raw, err = CreateCoseSign1([]byte(FragmentRego), "application/unknown+json", []byte(PubCertPem), []byte(KeyPem), "zero")
+
+		var raw, err = CreateCoseSign1([]byte(FragmentRego), "application/unknown+json", []byte(PubCertPem), []byte(KeyPem), "zero", cose.AlgorithmPS256, false)
 		if err != nil {
 			return false
 		}
@@ -71,7 +75,7 @@ func Test_CreateCoseSign1Fragment(t *testing.T) {
 			return false
 		}
 
-		for which, _ := range raw {
+		for which := range raw {
 			if raw[which] != FragmentCose[which] {
 				return false
 			}

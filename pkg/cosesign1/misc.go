@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
 	"io"
@@ -55,7 +54,7 @@ func WriteBlob(path string, data []byte) error {
 }
 
 func WriteString(path string, str string) error {
-	var data []byte = []byte(str)
+	var data = []byte(str)
 	return WriteBlob(path, data)
 }
 
@@ -72,12 +71,12 @@ single line base64 standard encoded raw DER certificate
 func x509ToPEM(cert *x509.Certificate) string {
 	base64Cert := base64.StdEncoding.EncodeToString(cert.Raw)
 
-	var begin string = "-----BEGIN CERTIFICATE-----\n"
-	var end string = "\n-----END CERTIFICATE-----"
+	var begin = "-----BEGIN CERTIFICATE-----\n"
+	var end = "\n-----END CERTIFICATE-----"
 
-	pem_data := begin + base64Cert + end
+	pemData := begin + base64Cert + end
 
-	return pem_data
+	return pemData
 }
 
 func keyToPEM(key any) string {
@@ -88,24 +87,12 @@ func keyToPEM(key any) string {
 	}
 	base64Cert := base64.StdEncoding.EncodeToString(derKey)
 
-	var begin string = "-----BEGIN PUBLIC KEY-----\n"
-	var end string = "\n-----END PUBLIC KEY-----"
+	var begin = "-----BEGIN PUBLIC KEY-----\n"
+	var end = "\n-----END PUBLIC KEY-----"
 
-	pem_data := begin + base64Cert + end
+	pemData := begin + base64Cert + end
 
-	return pem_data
-}
-
-func keyToRSAPEM(key *rsa.PublicKey) string {
-	derKey := x509.MarshalPKCS1PublicKey(key)
-	base64Cert := base64.StdEncoding.EncodeToString(derKey)
-
-	var begin string = "-----BEGIN RSA PUBLIC KEY-----\n"
-	var end string = "\n-----END RSA PUBLIC KEY-----"
-
-	pem_data := begin + base64Cert + end
-
-	return pem_data
+	return pemData
 }
 
 func logCert(name string, x509cert *x509.Certificate) {
@@ -115,7 +102,7 @@ func logCert(name string, x509cert *x509.Certificate) {
 	log.Printf("  AuthorityKeyId = %q\n", x509cert.AuthorityKeyId)
 	log.Printf("  SubjectKeyId = %q\n", x509cert.SubjectKeyId)
 
-	var pem string = x509ToPEM(x509cert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
+	var pem = x509ToPEM(x509cert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
 	var pubKey = x509cert.PublicKey
 	var pubKeyPem = keyToPEM(pubKey)
 

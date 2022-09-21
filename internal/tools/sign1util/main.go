@@ -7,10 +7,11 @@ import (
 	"log"
 
 	"github.com/Microsoft/hcsshim/pkg/cosesign1"
+	"github.com/veraison/go-cose"
 )
 
 func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, requireKnownAuthority bool, verbose bool) (map[string]string, error) {
-	var coseBlob []byte = cosesign1.ReadBlob(inputFilename)
+	coseBlob := cosesign1.ReadBlob(inputFilename)
 	var optionalPubKeyPEM []byte
 	if optionalPubKeyFilename != "" {
 		optionalPubKeyPEM = cosesign1.ReadBlob(optionalPubKeyFilename)
@@ -30,6 +31,15 @@ func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, require
 		log.Printf("payload:\n%s\n", results["payload"])
 	}
 	return results, err
+}
+
+func createCoseSign1(payloadFilename string, contentType string, chainFilename string, keyFilename string, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
+
+	var payloadBlob = cosesign1.ReadBlob(payloadFilename)
+	var keyPem = cosesign1.ReadBlob(keyFilename)
+	var chainPem = cosesign1.ReadBlob(chainFilename)
+
+	return cosesign1.CreateCoseSign1(payloadBlob, contentType, chainPem, keyPem, saltType, algo, verbose)
 }
 
 // example scitt usage to try tro match
@@ -77,47 +87,69 @@ func main() {
 	leafKeyCmd.BoolVar(&verbose, "verbose", false, "verbose output")
 
 	if len(os.Args) > 1 {
-		var action string = os.Args[1]
+		action := os.Args[1]
 		switch action {
 		case "create":
-			createCmd.Parse(os.Args[2:])
-			algorithm, err := cosesign1.StringToAlgorithm(algo)
-			var raw []byte
+			err := createCmd.Parse(os.Args[2:])
 			if err == nil {
-				raw, err = cosesign1.CreateCoseSign1(payloadFilename, contentType, chainFilename, keyFilename, saltType, algorithm, verbose)
-			}
+				algorithm, err := cosesign1.StringToAlgorithm(algo)
+				var raw []byte
+				if err == nil {
+					raw, err = createCoseSign1(payloadFilename, contentType, chainFilename, keyFilename, saltType, algorithm, verbose)
+				}
 
-			if err != nil {
-				log.Print("failed create: " + err.Error())
-			} else {
-				if len(outputFilename) > 0 {
-					err = cosesign1.WriteBlob(outputFilename, raw)
-					if err != nil {
-						log.Printf("writeBlob failed for %s\n", outputFilename)
+				if err != nil {
+					log.Print("failed create: " + err.Error())
+				} else {
+					if len(outputFilename) > 0 {
+						err = cosesign1.WriteBlob(outputFilename, raw)
+						if err != nil {
+							log.Printf("writeBlob failed for %s\n", outputFilename)
+						}
 					}
 				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
 			}
 
 		case "check":
-			checkCmd.Parse(os.Args[2:])
-			_, err := checkCoseSign1(inputFilename, keyFilename, requireKNownAuthority, verbose)
-			if err != nil {
-				log.Print("failed check: " + err.Error())
+			err := checkCmd.Parse(os.Args[2:])
+			if err == nil {
+				_, err := checkCoseSign1(inputFilename, keyFilename, requireKNownAuthority, verbose)
+				if err != nil {
+					log.Print("failed check: " + err.Error())
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
 			}
 
 		case "print":
-			printCmd.Parse(os.Args[2:])
-			_, err := checkCoseSign1(inputFilename, "", false, true)
-			if err != nil {
-				log.Print("failed print: " + err.Error())
+			err := printCmd.Parse(os.Args[2:])
+			if err == nil {
+				_, err := checkCoseSign1(inputFilename, "", false, true)
+				if err != nil {
+					log.Print("failed print: " + err.Error())
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
 			}
 
 		case "leafkey":
-			leafKeyCmd.Parse(os.Args[2:])
-			results, err := checkCoseSign1(inputFilename, "", false, verbose)
+			err := leafKeyCmd.Parse(os.Args[2:])
 			if err == nil {
-				cosesign1.WriteString(outputFilename, results["pubkey"])
+				results, err := checkCoseSign1(inputFilename, "", false, verbose)
+				if err == nil {
+					err = cosesign1.WriteString(outputFilename, results["pubkey"])
+					if err != nil {
+						log.Printf("writing the pubkey to %s failed: %s", outputFilename, err.Error())
+					}
+				} else {
+					log.Printf("reading the COSE Sign1 from %s failed: %s", inputFilename, err.Error())
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
 			}
+
 		default:
 			os.Stderr.WriteString("Usage: sign1util [create|check|print|leafkey] -h\n")
 		}

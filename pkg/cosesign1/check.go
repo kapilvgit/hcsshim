@@ -22,14 +22,13 @@ single line base64 standard encoded raw DER certificate
 
 func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool) (map[string]string, error) {
 	var msg cose.Sign1Message
-	var err error = msg.UnmarshalCBOR(raw)
+	err := msg.UnmarshalCBOR(raw)
 	if err != nil {
 		return nil, err
 	}
 
-	var protected cose.ProtectedHeader = msg.Headers.Protected
-
-	var algo = protected[cose.HeaderLabelAlgorithm]
+	protected := msg.Headers.Protected
+	algo := protected[cose.HeaderLabelAlgorithm]
 
 	if verbose {
 		log.Printf("algo %d aka %s", algo.(cose.Algorithm), algo.(cose.Algorithm))
@@ -51,7 +50,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 
 	// extract x509.Certificates from the blobs in the COSE_Sign1 header
 	for which, der := range x5RawChainArray {
-		var raw []byte = der.([]byte)
+		var raw = der.([]byte)
 		var x509cert, err = x509.ParseCertificate(raw)
 		if err != nil {
 			if verbose {
@@ -60,7 +59,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 			return nil, err
 		}
 		if verbose {
-			var desc string = fmt.Sprintf("chain %d", which)
+			desc := fmt.Sprintf("chain %d", which)
 			logCert(desc, x509cert)
 		}
 		x5Array = append(x5Array, x509cert)
@@ -75,8 +74,8 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 
 	// We need to split the certs into root, leaf and intermediate to use x509.Certificate.Verify(opts) below
 
-	var rootCerts *x509.CertPool = x509.NewCertPool()
-	var intermediateCerts *x509.CertPool = x509.NewCertPool()
+	rootCerts := x509.NewCertPool()
+	intermediateCerts := x509.NewCertPool()
 	var leafCert *x509.Certificate // x509 leaf cert
 	var rootCert *x509.Certificate // x509 root cert
 
@@ -105,7 +104,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 
 	_, err = leafCert.Verify(opts)
 
-	var leafPem string = x509ToPEM(leafCert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
+	var leafPem = x509ToPEM(leafCert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
 	var leafPubKey = leafCert.PublicKey
 	var leafPubKeyPem = keyToPEM(leafPubKey)
 
@@ -133,7 +132,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 	} else {
 		var keyDer *pem.Block
 		keyDer, _ = pem.Decode(optionaPubKeyPEM)
-		var keyBytes []byte = keyDer.Bytes
+		var keyBytes = keyDer.Bytes
 
 		keyToCheck, err = x509.ParsePKCS1PublicKey(keyBytes)
 		if err == nil {
