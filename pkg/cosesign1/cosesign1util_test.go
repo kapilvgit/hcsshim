@@ -11,13 +11,13 @@ import (
 //go:embed fragment.rego
 var FragmentRego string
 
-//go:embed fragment.cose
+//go:embed ec384-test.cose
 var FragmentCose []byte
 
 // This is a self signed key which is only used for testing, it is not a risk.
 // It enables a check against the key and signature blobs
 
-//go:embed key.pem
+//go:embed ec384-key.pem
 var KeyStrippedPem string // Strip off the BEGIN/END so we don't trigger credential checks
 
 var begingPrivateKey = "-----BEGIN PRIVATE KEY-----\n"
@@ -25,11 +25,11 @@ var endPrivateKey = "-----END PRIVATE KEY-----"
 
 var KeyPem = begingPrivateKey + KeyStrippedPem + endPrivateKey
 
-//go:embed pubcert.pem
-var PubCertPem string
+//go:embed ec384-cert.crt
+var PubCertPem string // the whole cert chain to embed
 
-//go:embed leafcert.pem
-var LeafCertPem string
+//go:embed ec384-leaf.crt
+var LeafCertPem string // the expected leaf cert
 
 // Validate that our conversion from the external SecurityPolicy representation
 // to our internal format is done correctly.
@@ -44,9 +44,10 @@ func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 		var payload = resultsMap["payload"]
 		_ = resultsMap["pubkey"]
 
-		//var leafCertPem = begin + LeafCertBody + end
+		// iss does NOT contain -----BEGIN/END CERTIFICATE-----	or a trailing \n
+		// so allow for the \n difference to make authoring the test data easier.
 
-		if iss != LeafCertPem {
+		if iss != LeafCertPem && (iss+"\n") != LeafCertPem {
 			return false
 		}
 		if cty != "application/unknown+json" {
@@ -66,7 +67,7 @@ func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 func Test_CreateCoseSign1Fragment(t *testing.T) {
 	f := func() bool {
 
-		var raw, err = CreateCoseSign1([]byte(FragmentRego), "application/unknown+json", []byte(PubCertPem), []byte(KeyPem), "zero", cose.AlgorithmPS256, false)
+		var raw, err = CreateCoseSign1([]byte(FragmentRego), "application/unknown+json", []byte(PubCertPem), []byte(KeyPem), "zero", cose.AlgorithmES384, false)
 		if err != nil {
 			return false
 		}
