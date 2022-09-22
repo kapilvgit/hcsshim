@@ -131,7 +131,7 @@ func (*Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSec
 		return err
 	}
 	blob := []byte(fragment.Fragment)
-	os.WriteFile("/tmp/fragment.blob", blob, 0644)
+	_ = os.WriteFile("/tmp/fragment.blob", blob, 0644)
 
 	var result map[string]string
 	result, err = cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil, false, true) // params raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool
