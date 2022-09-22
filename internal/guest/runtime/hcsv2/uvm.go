@@ -39,6 +39,7 @@ import (
 	"github.com/Microsoft/hcsshim/pkg/securitypolicy"
 	"github.com/mattn/go-shellwords"
 	"github.com/pkg/errors"
+	"golang.org/x/sys/unix"
 )
 
 // UVMContainerID is the ContainerID that will be sent on any prot.MessageBase
@@ -400,7 +401,7 @@ func (h *Host) modifyHostSettings(ctx context.Context, containerID string, req *
 	case guestresource.ResourceTypeMappedVirtualDisk:
 		return modifyMappedVirtualDisk(ctx, req.RequestType, req.Settings.(*guestresource.LCOWMappedVirtualDisk), h.securityPolicyEnforcer)
 	case guestresource.ResourceTypeMappedDirectory:
-		return modifyMappedDirectory(ctx, h.vsock, req.RequestType, req.Settings.(*guestresource.LCOWMappedDirectory))
+		return modifyMappedDirectory(ctx, h.vsock, req.RequestType, req.Settings.(*guestresource.LCOWMappedDirectory), h.securityPolicyEnforcer)
 	case guestresource.ResourceTypeVPMemDevice:
 		return modifyMappedVPMemDevice(ctx, req.RequestType, req.Settings.(*guestresource.LCOWMappedVPMemDevice), h.securityPolicyEnforcer)
 	case guestresource.ResourceTypeCombinedLayers:
@@ -457,6 +458,58 @@ func (h *Host) ModifySettings(ctx context.Context, containerID string, req *gues
 // state that has not been cleaned before calling this function.
 func (*Host) Shutdown() {
 	_ = syscall.Reboot(syscall.LINUX_REBOOT_CMD_POWER_OFF)
+}
+
+// Called to shutdown a container
+func (h *Host) ShutdownContainer(ctx context.Context, containerID string, graceful bool) error {
+	c, err := h.GetCreatedContainer(containerID)
+	if err != nil {
+		return err
+	}
+
+	err = h.securityPolicyEnforcer.EnforceShutdownContainerPolicy(containerID)
+	if err != nil {
+		return err
+	}
+
+	signal := unix.SIGTERM
+	if !graceful {
+		signal = unix.SIGKILL
+	}
+
+	return c.Kill(ctx, signal)
+}
+
+func (h *Host) SignalContainerProcess(ctx context.Context, containerID string, processID uint32, signal syscall.Signal) error {
+	c, err := h.GetCreatedContainer(containerID)
+	if err != nil {
+		return err
+	}
+
+	signalingInitProcess := (processID == c.initProcess.pid)
+
+	// Don't allow signalProcessV2 to route around container shutdown policy
+	// Sending SIGTERM or SIGKILL to a containers init process will shut down
+	// the container.
+	if signalingInitProcess {
+		if (signal == unix.SIGTERM) || (signal == unix.SIGKILL) {
+			graceful := (signal == unix.SIGTERM)
+			return h.ShutdownContainer(ctx, containerID, graceful)
+		}
+	}
+
+	p, err := c.GetProcess(processID)
+	if err != nil {
+		return err
+	}
+
+	startupArgList := p.(*containerProcess).spec.Args
+	err = h.securityPolicyEnforcer.EnforceSignalContainerProcessPolicy(containerID, signal, signalingInitProcess, startupArgList)
+	if err != nil {
+		return err
+	}
+
+	return p.Kill(ctx, signal)
 }
 
 func (h *Host) ExecProcess(ctx context.Context, containerID string, params prot.ProcessParameters, conSettings stdio.ConnectionSettings) (_ int, err error) {
@@ -608,12 +661,30 @@ func modifyMappedVirtualDisk(
 		mountCtx, cancel := context.WithTimeout(ctx, time.Second*5)
 		defer cancel()
 		if mvd.MountPath != "" {
+			if mvd.ReadOnly {
+				// containers only have read-only layers so only enforce for them
+				var deviceHash string
+				if mvd.VerityInfo != nil {
+					deviceHash = mvd.VerityInfo.RootDigest
+				}
+
+				err = securityPolicy.EnforceDeviceMountPolicy(mvd.MountPath, deviceHash)
+				if err != nil {
+					return errors.Wrapf(err, "mounting scsi device controller %d lun %d onto %s denied by policy", mvd.Controller, mvd.Lun, mvd.MountPath)
+				}
+			}
+
 			return scsi.Mount(mountCtx, mvd.Controller, mvd.Lun, mvd.MountPath,
-				mvd.ReadOnly, mvd.Encrypted, mvd.Options, mvd.VerityInfo, securityPolicy)
+				mvd.ReadOnly, mvd.Encrypted, mvd.Options, mvd.VerityInfo)
 		}
 		return nil
 	case guestrequest.RequestTypeRemove:
 		if mvd.MountPath != "" {
+			err = securityPolicy.EnforceDeviceUnmountPolicy(mvd.MountPath)
+			if err != nil {
+				return errors.Wrapf(err, "unmounting scsi device at %s denied by policy", mvd.MountPath)
+			}
+
 			if err := scsi.Unmount(ctx, mvd.Controller, mvd.Lun, mvd.MountPath,
 				mvd.Encrypted, mvd.VerityInfo, securityPolicy,
 			); err != nil {
@@ -631,11 +702,22 @@ func modifyMappedDirectory(
 	vsock transport.Transport,
 	rt guestrequest.RequestType,
 	md *guestresource.LCOWMappedDirectory,
+	securityPolicy securitypolicy.SecurityPolicyEnforcer,
 ) (err error) {
 	switch rt {
 	case guestrequest.RequestTypeAdd:
+		err = securityPolicy.EnforcePlan9MountPolicy(md.MountPath)
+		if err != nil {
+			return errors.Wrapf(err, "mounting plan9 device at %s denied by policy", md.MountPath)
+		}
+
 		return plan9.Mount(ctx, vsock, md.MountPath, md.ShareName, uint32(md.Port), md.ReadOnly)
 	case guestrequest.RequestTypeRemove:
+		err = securityPolicy.EnforcePlan9UnmountPolicy(md.MountPath)
+		if err != nil {
+			return errors.Wrapf(err, "unmounting plan9 device at %s denied by policy", md.MountPath)
+		}
+
 		return storage.UnmountPath(ctx, md.MountPath, true)
 	default:
 		return newInvalidRequestTypeError(rt)
@@ -649,9 +731,22 @@ func modifyMappedVPMemDevice(ctx context.Context,
 ) (err error) {
 	switch rt {
 	case guestrequest.RequestTypeAdd:
-		return pmem.Mount(ctx, vpd.DeviceNumber, vpd.MountPath, vpd.MappingInfo, vpd.VerityInfo, securityPolicy)
+		var deviceHash string
+		if vpd.VerityInfo != nil {
+			deviceHash = vpd.VerityInfo.RootDigest
+		}
+		err = securityPolicy.EnforceDeviceMountPolicy(vpd.MountPath, deviceHash)
+		if err != nil {
+			return errors.Wrapf(err, "mounting pmem device %d onto %s denied by policy", vpd.DeviceNumber, vpd.MountPath)
+		}
+
+		return pmem.Mount(ctx, vpd.DeviceNumber, vpd.MountPath, vpd.MappingInfo, vpd.VerityInfo)
 	case guestrequest.RequestTypeRemove:
-		return pmem.Unmount(ctx, vpd.DeviceNumber, vpd.MountPath, vpd.MappingInfo, vpd.VerityInfo, securityPolicy)
+		if err := securityPolicy.EnforceDeviceUnmountPolicy(vpd.MountPath); err != nil {
+			return errors.Wrapf(err, "unmounting pmem device from %s denied by policy", vpd.MountPath)
+		}
+
+		return pmem.Unmount(ctx, vpd.DeviceNumber, vpd.MountPath, vpd.MappingInfo, vpd.VerityInfo)
 	default:
 		return newInvalidRequestTypeError(rt)
 	}
@@ -690,9 +785,17 @@ func modifyCombinedLayers(
 			workdirPath = filepath.Join(cl.ScratchPath, "work")
 		}
 
+		if err := securityPolicy.EnforceOverlayMountPolicy(cl.ContainerID, layerPaths, cl.ContainerRootPath); err != nil {
+			return errors.Wrap(err, "overlay creation denied by policy")
+		}
+
 		return overlay.MountLayer(ctx, layerPaths, upperdirPath, workdirPath,
-			cl.ContainerRootPath, readonly, cl.ContainerID, securityPolicy)
+			cl.ContainerRootPath, readonly, cl.ContainerID)
 	case guestrequest.RequestTypeRemove:
+		if err := securityPolicy.EnforceOverlayUnmountPolicy(cl.ContainerRootPath); err != nil {
+			return errors.Wrap(err, "overlay removal denied by policy")
+		}
+
 		return storage.UnmountPath(ctx, cl.ContainerRootPath, true)
 	default:
 		return newInvalidRequestTypeError(rt)

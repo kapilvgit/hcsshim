@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/Microsoft/hcsshim/internal/guestpath"
 	"github.com/pkg/errors"
@@ -27,12 +28,22 @@ type PolicyConfig struct {
 	AllowAll          bool                    `json:"allow_all" toml:"allow_all"`
 	Containers        []ContainerConfig       `json:"containers" toml:"container"`
 	ExternalProcesses []ExternalProcessConfig `json:"external_processes" toml:"external_process"`
+	Plan9Mounts       []string                `json:"plan9_mounts" toml:"plan9_mounts"`
+	Fragments         []FragmentConfig        `json:"fragments" toml:"fragment"`
 }
 
 // ExternalProcessConfig contains toml or JSON config for running external processes in the UVM.
 type ExternalProcessConfig struct {
 	Command    []string `json:"command" toml:"command"`
 	WorkingDir string   `json:"working_dir" toml:"working_dir"`
+}
+
+// FragmentConfig contains toml or JSON config for including elements from fragments.
+type FragmentConfig struct {
+	Issuer     string   `json:"issuer" toml:"issuer"`
+	Feed       string   `json:"feed" toml:"feed"`
+	MinimumSVN string   `json:"minimum_svn" toml:"minimum_svn"`
+	Includes   []string `json:"includes" toml:"include"`
 }
 
 // AuthConfig contains toml or JSON config for registry authentication.
@@ -60,6 +71,7 @@ type ContainerConfig struct {
 	Mounts        []MountConfig       `json:"mounts" toml:"mount"`
 	AllowElevated bool                `json:"allow_elevated" toml:"allow_elevated"`
 	ExecProcesses []ExecProcessConfig `json:"exec_processes" toml:"exec_process"`
+	Signals       []syscall.Signal    `json:"signals" toml:"signals"`
 }
 
 // MountConfig contains toml or JSON config for mount security policy
@@ -73,7 +85,8 @@ type MountConfig struct {
 // ExecProcessConfig contains toml or JSON config for exec process security
 // policy constraint description
 type ExecProcessConfig struct {
-	Command []string `json:"command" toml:"command"`
+	Command []string         `json:"command" toml:"command"`
+	Signals []syscall.Signal `json:"signals" toml:"signals"`
 }
 
 // NewEnvVarRules creates slice of EnvRuleConfig's from environment variables
@@ -151,6 +164,7 @@ type Container struct {
 	Mounts        Mounts      `json:"mounts"`
 	AllowElevated bool        `json:"allow_elevated"`
 	ExecProcesses []ExecProcessConfig
+	Signals       []syscall.Signal
 }
 
 // StringArrayMap wraps an array of strings as a string map.
@@ -191,6 +205,7 @@ func CreateContainerPolicy(
 	mounts []MountConfig,
 	allowElevated bool,
 	execProcesses []ExecProcessConfig,
+	signals []syscall.Signal,
 ) (*Container, error) {
 	if err := validateEnvRules(envRules); err != nil {
 		return nil, err
@@ -206,6 +221,7 @@ func CreateContainerPolicy(
 		Mounts:        newMountConstraints(mounts),
 		AllowElevated: allowElevated,
 		ExecProcesses: execProcesses,
+		Signals:       signals,
 	}, nil
 }
 

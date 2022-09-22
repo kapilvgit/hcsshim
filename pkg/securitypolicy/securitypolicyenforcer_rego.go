@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/Microsoft/hcsshim/internal/guest/spec"
 	"github.com/Microsoft/hcsshim/internal/guestpath"
@@ -45,6 +47,13 @@ var frameworkCode string
 //go:embed api.rego
 var apiCode string
 
+type module struct {
+	namespace string
+	feed      string
+	issuer    string
+	code      string
+}
+
 // RegoEnforcer is a stub implementation of a security policy, which will be
 // based on [Rego] policy language. The detailed implementation will be
 // introduced in the subsequent PRs and documentation updated accordingly.
@@ -59,8 +68,12 @@ type regoEnforcer struct {
 	data map[string]interface{}
 	// Base64 encoded (JSON) policy
 	base64policy string
+	// Modules
+	modules map[string]*module
 	// Compiled modules
 	compiledModules *ast.Compiler
+	// Debug flag
+	debug bool
 }
 
 var _ SecurityPolicyEnforcer = (*regoEnforcer)(nil)
@@ -107,7 +120,7 @@ func createRegoEnforcer(base64EncodedPolicy string,
 			return createOpenDoorEnforcer(base64EncodedPolicy, defaultMounts, privilegedMounts)
 		}
 
-		code, err = marshalRego(securityPolicy.AllowAll, containers, []ExternalProcessConfig{})
+		code, err = marshalRego(securityPolicy.AllowAll, containers, []ExternalProcessConfig{}, []string{}, []FragmentConfig{})
 		if err != nil {
 			return nil, fmt.Errorf("error marshaling the policy to Rego: %w", err)
 		}
@@ -139,27 +152,44 @@ func newRegoPolicy(code string, defaultMounts []oci.Mount, privilegedMounts []oc
 		"hugePagesPrefix":  guestpath.HugePagesMountPrefix,
 	}
 	policy.base64policy = ""
+	policy.debug = false
+	policy.modules = map[string]*module{
+		"policy.rego":    {namespace: "policy", code: policy.code},
+		"api.rego":       {namespace: "api", code: apiCode},
+		"framework.rego": {namespace: "framework", code: frameworkCode},
+	}
 
-	modules := map[string]string{
-		"policy.rego":    policy.code,
-		"api.rego":       apiCode,
-		"framework.rego": frameworkCode,
+	err := policy.compile()
+	if err != nil {
+		return nil, fmt.Errorf("rego compilation failed: %w", err)
+	}
+
+	return policy, nil
+}
+
+func (policy *regoEnforcer) compile() error {
+	if policy.compiledModules != nil {
+		return nil
+	}
+
+	modules := make(map[string]string)
+	for _, module := range policy.modules {
+		modules[module.namespace+".rego"] = module.code
 	}
 
 	// TODO temporary hack for debugging policies until GCS logging design
 	// and implementation is finalized. This option should be changed to
 	// "true" if debugging is desired.
 	options := ast.CompileOpts{
-		EnablePrintStatements: false,
+		EnablePrintStatements: policy.debug,
 	}
 
 	if compiled, err := ast.CompileModulesWithOpt(modules, options); err == nil {
 		policy.compiledModules = compiled
+		return nil
 	} else {
-		return nil, fmt.Errorf("rego compilation failed: %w", err)
+		return fmt.Errorf("rego compilation failed: %w", err)
 	}
-
-	return policy, nil
 }
 
 func (policy *regoEnforcer) allowed(enforcementPoint string, results map[string]interface{}) (bool, error) {
@@ -228,10 +258,18 @@ func (policy *regoEnforcer) query(enforcementPoint string, input map[string]inte
 	var buf bytes.Buffer
 	query := rego.New(
 		rego.Query(fmt.Sprintf("data.policy.%s", enforcementPoint)),
-		rego.Compiler(policy.compiledModules),
 		rego.Input(input),
 		rego.Store(store),
+		rego.EnablePrintStatements(policy.debug),
 		rego.PrintHook(topdown.NewPrintHook(&buf)))
+
+	if policy.compiledModules == nil {
+		for _, module := range policy.modules {
+			rego.Module(module.namespace, module.code)(query)
+		}
+	} else {
+		rego.Compiler(policy.compiledModules)(query)
+	}
 
 	ctx := context.Background()
 	resultSet, err := query.Eval(ctx)
@@ -428,6 +466,11 @@ func newMetadataOperation(operation interface{}) (*metadataOperation, error) {
 	return &metadataOp, nil
 }
 
+var reservedResultKeys map[string]struct{} = map[string]struct{}{
+	"allowed":    {},
+	"add_module": {},
+}
+
 func (policy *regoEnforcer) updateMetadata(results map[string]interface{}) error {
 	policy.mutex.Lock()
 	defer policy.mutex.Unlock()
@@ -435,7 +478,7 @@ func (policy *regoEnforcer) updateMetadata(results map[string]interface{}) error
 	// this is the top-level data namespace for metadata
 	metadata := policy.data["metadata"].(map[string]map[string]interface{})
 	for name, value := range results {
-		if name == "allowed" {
+		if _, ok := reservedResultKeys[name]; ok {
 			continue
 		}
 
@@ -491,6 +534,21 @@ func (policy *regoEnforcer) enforce(enforcementPoint string, input map[string]in
 		if err != nil {
 			return fmt.Errorf("unable to update metadata: %w", err)
 		}
+
+		if enforcementPoint == "load_fragment" {
+			id := input["issuer"].(string) + ">" + input["feed"].(string)
+			if add_module, ok := results["add_module"].(bool); ok {
+				if !add_module {
+					delete(policy.modules, id)
+				}
+			} else {
+				// TODO should we error here?
+				delete(policy.modules, id)
+			}
+
+			policy.compile()
+		}
+
 		return nil
 	}
 
@@ -521,13 +579,22 @@ func (policy *regoEnforcer) EnforceDeviceMountPolicy(target string, deviceHash s
 	return policy.enforce("mount_device", input)
 }
 
-func (policy *regoEnforcer) EnforceOverlayMountPolicy(containerID string, layerPaths []string) error {
+func (policy *regoEnforcer) EnforceOverlayMountPolicy(containerID string, layerPaths []string, target string) error {
 	input := map[string]interface{}{
 		"containerID": containerID,
 		"layerPaths":  layerPaths,
+		"target":      target,
 	}
 
 	return policy.enforce("mount_overlay", input)
+}
+
+func (policy *regoEnforcer) EnforceOverlayUnmountPolicy(target string) error {
+	input := map[string]interface{}{
+		"unmountTarget": target,
+	}
+
+	return policy.enforce("unmount_overlay", input)
 }
 
 // Rego does not have a way to determine the OS path separator
@@ -614,4 +681,79 @@ func (policy *regoEnforcer) EnforceExecExternalProcessPolicy(argList []string, e
 	}
 
 	return policy.enforce("exec_external", input)
+}
+
+func (policy *regoEnforcer) EnforceShutdownContainerPolicy(containerID string) error {
+	input := map[string]interface{}{
+		"containerID": containerID,
+	}
+
+	return policy.enforce("shutdown_container", input)
+}
+
+func (policy *regoEnforcer) EnforceSignalContainerProcessPolicy(containerID string, signal syscall.Signal, isInitProcess bool, startupArgList []string) error {
+	input := map[string]interface{}{
+		"containerID":   containerID,
+		"signal":        signal,
+		"isInitProcess": isInitProcess,
+		"argList":       startupArgList,
+	}
+
+	return policy.enforce("signal_container_process", input)
+}
+
+func (policy *regoEnforcer) EnforcePlan9MountPolicy(target string) error {
+	input := map[string]interface{}{
+		"target": target,
+	}
+
+	return policy.enforce("plan9_mount", input)
+}
+
+func (policy *regoEnforcer) EnforcePlan9UnmountPolicy(target string) error {
+	input := map[string]interface{}{
+		"target": target,
+	}
+
+	return policy.enforce("plan9_unmount", input)
+}
+
+func (f module) id() string {
+	return f.issuer + ">" + f.feed
+}
+
+func parseNamespace(rego string) (string, error) {
+	lines := strings.Split(rego, "\n")
+	parts := strings.Split(lines[0], " ")
+	if parts[0] != "package" {
+		return "", errors.New("package definition required on first line")
+	}
+
+	namespace := parts[1]
+	return namespace, nil
+}
+
+func (policy *regoEnforcer) LoadFragment(issuer string, feed string, rego string) error {
+	namespace, err := parseNamespace(rego)
+	if err != nil {
+		return fmt.Errorf("unable to load fragment: %w", err)
+	}
+
+	fragment := module{
+		issuer:    issuer,
+		feed:      feed,
+		code:      rego,
+		namespace: namespace,
+	}
+
+	policy.modules[fragment.id()] = &fragment
+	policy.compiledModules = nil
+
+	input := map[string]interface{}{
+		"issuer":    issuer,
+		"feed":      feed,
+		"namespace": namespace,
+	}
+
+	return policy.enforce("load_fragment", input)
 }

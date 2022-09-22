@@ -3,12 +3,15 @@ package securitypolicy
 import (
 	"fmt"
 	"strconv"
+	"syscall"
 )
 
 // Internal version of SecurityPolicy
 type securityPolicyInternal struct {
 	Containers        []*securityPolicyContainer
 	ExternalProcesses []*externalProcess
+	Plan9Mounts       []string
+	Fragments         []*fragment
 }
 
 // Internal version of Container
@@ -31,10 +34,15 @@ type securityPolicyContainer struct {
 	// A list of lists of commands that can be used to execute additional
 	// processes within the container
 	ExecProcesses []containerExecProcess
+	// A list of signals that are allowed to be sent to the container's init
+	// process.
+	Signals []syscall.Signal
 }
 
 type containerExecProcess struct {
 	Command []string
+	// A list of signals that are allowed to be sent to this process
+	Signals []syscall.Signal
 }
 
 type externalProcess struct {
@@ -49,6 +57,13 @@ type mountInternal struct {
 	Destination string
 	Type        string
 	Options     []string
+}
+
+type fragment struct {
+	issuer     string
+	feed       string
+	minimumSVN string
+	includes   []string
 }
 
 func (c Container) toInternal() (securityPolicyContainer, error) {
@@ -88,6 +103,7 @@ func (c Container) toInternal() (securityPolicyContainer, error) {
 		Mounts:        mounts,
 		AllowElevated: c.AllowElevated,
 		ExecProcesses: execProcesses,
+		Signals:       c.Signals,
 	}, nil
 }
 
@@ -154,6 +170,15 @@ func (p ExternalProcessConfig) toInternal() externalProcess {
 			Required: true,
 		}},
 		workingDir: p.WorkingDir,
+	}
+}
+
+func (f FragmentConfig) toInternal() fragment {
+	return fragment{
+		issuer:     f.Issuer,
+		feed:       f.Feed,
+		minimumSVN: f.MinimumSVN,
+		includes:   f.Includes,
 	}
 }
 

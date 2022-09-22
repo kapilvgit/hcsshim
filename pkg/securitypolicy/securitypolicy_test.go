@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"testing/quick"
 	"time"
@@ -23,6 +24,7 @@ const (
 	minStringLength                            = 10
 	maxContainersInGeneratedConstraints        = 32
 	maxExternalProcessesInGeneratedConstraints = 16
+	maxFragmentsInGeneratedConstraints         = 4
 	maxLayersInGeneratedContainer              = 32
 	maxGeneratedContainerID                    = 1000000
 	maxGeneratedCommandLength                  = 128
@@ -30,6 +32,8 @@ const (
 	maxGeneratedEnvironmentVariables           = 24
 	maxGeneratedEnvironmentVariableRuleLength  = 64
 	maxGeneratedEnvironmentVariableRules       = 12
+	maxGeneratedFragmentFeedLength             = 256
+	maxGeneratedFragmentIssuerLength           = 16
 	maxGeneratedMountTargetLength              = 256
 	rootHashLength                             = 64
 	maxGeneratedMounts                         = 4
@@ -39,6 +43,8 @@ const (
 	maxGeneratedMountOptionLength              = 32
 	maxGeneratedExecProcesses                  = 12
 	maxGeneratedWorkingDirLength               = 128
+	maxGeneratedVersion                        = 10
+	maxSignalNumber                            = 64
 	// additional consts
 	// the standard enforcer tests don't do anything with the encoded policy
 	// string. this const exists to make that explicit
@@ -208,7 +214,7 @@ func Test_EnforceOverlayMountPolicy_No_Matches(t *testing.T) {
 			return false
 		}
 
-		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers)
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand))
 
 		// not getting an error means something is broken
 		return err != nil
@@ -229,7 +235,7 @@ func Test_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 			return false
 		}
 
-		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers)
+		err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand))
 
 		// getting an error means something is broken
 		return err == nil
@@ -242,17 +248,17 @@ func Test_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 
 // Tests the specific case of trying to mount the same overlay twice using the /// same container id. This should be disallowed.
 func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
-	gc := generateConstraints(testRand, 1, 0)
+	gc := generateConstraints(testRand, 1)
 	tc, err := setupContainerWithOverlay(gc, true)
 	if err != nil {
 		t.Fatalf("expected nil error got: %v", err)
 	}
 
-	if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+	if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 		t.Fatalf("expected nil error got: %v", err)
 	}
 
-	if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err == nil {
+	if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err == nil {
 		t.Fatal("able to create overlay for the same container twice")
 	}
 }
@@ -284,7 +290,7 @@ func Test_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing
 			}
 
 			id := testDataGenerator.uniqueContainerID()
-			err = sp.EnforceOverlayMountPolicy(id, layerPaths)
+			err = sp.EnforceOverlayMountPolicy(id, layerPaths, generateMountTarget(testRand))
 			if err != nil {
 				t.Fatalf("failed with %d containers", containersToCreate)
 			}
@@ -297,7 +303,7 @@ func Test_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing
 // policy, we should be able to create a single container for that overlay
 // but no more than that one.
 func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice_With_Different_IDs(t *testing.T) {
-	p := generateConstraints(testRand, 1, 0)
+	p := generateConstraints(testRand, 1)
 	sp := NewStandardSecurityPolicyEnforcer(p.containers, ignoredEncodedPolicyString)
 
 	var containerIDOne, containerIDTwo string
@@ -313,12 +319,12 @@ func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice_With_Differen
 		t.Fatalf("expected nil error got: %v", err)
 	}
 
-	err = sp.EnforceOverlayMountPolicy(containerIDOne, layerPaths)
+	err = sp.EnforceOverlayMountPolicy(containerIDOne, layerPaths, generateMountTarget(testRand))
 	if err != nil {
 		t.Fatalf("expected nil error got: %v", err)
 	}
 
-	err = sp.EnforceOverlayMountPolicy(containerIDTwo, layerPaths)
+	err = sp.EnforceOverlayMountPolicy(containerIDTwo, layerPaths, generateMountTarget(testRand))
 	if err == nil {
 		t.Fatal("able to reuse an overlay across containers")
 	}
@@ -332,7 +338,7 @@ func Test_EnforceCommandPolicy_Matches(t *testing.T) {
 			return false
 		}
 
-		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -356,7 +362,7 @@ func Test_EnforceCommandPolicy_NoMatches(t *testing.T) {
 			return false
 		}
 
-		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -408,7 +414,7 @@ func Test_EnforceCommandPolicy_NarrowingMatches(t *testing.T) {
 				return false
 			}
 
-			err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+			err = policy.EnforceOverlayMountPolicy(containerID, layerPaths, generateMountTarget(testRand))
 			if err != nil {
 				return false
 			}
@@ -481,7 +487,7 @@ func Test_EnforceEnvironmentVariablePolicy_Matches(t *testing.T) {
 			t.Error(err)
 			return false
 		}
-		if err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -499,7 +505,7 @@ func Test_EnforceEnvironmentVariablePolicy_Matches(t *testing.T) {
 }
 
 func Test_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
-	p := generateConstraints(testRand, 1, 0)
+	p := generateConstraints(testRand, 1)
 
 	container := generateConstraintsContainer(testRand, 1, 1)
 	// add a rule to re2 match
@@ -519,7 +525,7 @@ func Test_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
 		t.Fatalf("expected nil error got: %v", err)
 	}
 
-	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+	err = policy.EnforceOverlayMountPolicy(containerID, layerPaths, generateMountTarget(testRand))
 	if err != nil {
 		t.Fatalf("expected nil error got: %v", err)
 	}
@@ -541,7 +547,7 @@ func Test_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
 			t.Error(err)
 			return false
 		}
-		if err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err = tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -597,7 +603,7 @@ func Test_EnforceEnvironmentVariablePolicy_NarrowingMatches(t *testing.T) {
 				return false
 			}
 
-			err = policy.EnforceOverlayMountPolicy(containerID, layerPaths)
+			err = policy.EnforceOverlayMountPolicy(containerID, layerPaths, generateMountTarget(testRand))
 			if err != nil {
 				t.Error(err)
 				return false
@@ -674,7 +680,7 @@ func Test_WorkingDirectoryPolicy_Matches(t *testing.T) {
 			return false
 		}
 
-		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -696,7 +702,7 @@ func Test_WorkingDirectoryPolicy_NoMatches(t *testing.T) {
 			return false
 		}
 
-		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers); err != nil {
+		if err := tc.policy.EnforceOverlayMountPolicy(tc.containerID, tc.layers, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -744,7 +750,7 @@ func Test_Overlay_Duplicate_Layers(t *testing.T) {
 			overlay[i] = mountTargets[numLayers-i-1]
 		}
 		containerID := randString(testRand, 32)
-		if err := policy.EnforceOverlayMountPolicy(containerID, overlay); err != nil {
+		if err := policy.EnforceOverlayMountPolicy(containerID, overlay, generateMountTarget(testRand)); err != nil {
 			t.Errorf("failed to enforce overlay mount policy: %s", err)
 			return false
 		}
@@ -852,7 +858,7 @@ func (*SecurityPolicy) Generate(r *rand.Rand, _ int) reflect.Value {
 }
 
 func (*generatedConstraints) Generate(r *rand.Rand, _ int) reflect.Value {
-	c := generateConstraints(r, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	c := generateConstraints(r, maxContainersInGeneratedConstraints)
 	return reflect.ValueOf(c)
 }
 
@@ -890,7 +896,7 @@ func setupContainerWithOverlay(gc *generatedConstraints, valid bool) (tc *testCo
 	}, nil
 }
 
-func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses int32) *generatedConstraints {
+func generateConstraints(r *rand.Rand, maxContainers int32) *generatedConstraints {
 	var containers []*securityPolicyContainer
 
 	numContainers := (int)(atLeastOneAtMost(r, maxContainers))
@@ -898,20 +904,11 @@ func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses
 		containers = append(containers, generateConstraintsContainer(r, 1, maxLayersInGeneratedContainer))
 	}
 
-	var externalProcesses []*externalProcess
-
-	numExternalProcesses := 0
-	if maxExternalProcesses >= 1 {
-		numExternalProcesses = (int)(atLeastOneAtMost(r, maxExternalProcesses))
-	}
-
-	for i := 0; i < numExternalProcesses; i++ {
-		externalProcesses = append(externalProcesses, generateExternalProcess(r))
-	}
-
 	return &generatedConstraints{
 		containers:        containers,
-		externalProcesses: externalProcesses,
+		externalProcesses: make([]*externalProcess, 0),
+		plan9Mounts:       make([]string, 0),
+		fragments:         make([]*fragment, 0),
 	}
 }
 
@@ -927,6 +924,7 @@ func generateConstraintsContainer(r *rand.Rand, minNumberOfLayers, maxNumberOfLa
 		c.Layers = append(c.Layers, generateRootHash(r))
 	}
 	c.ExecProcesses = generateExecProcesses(r)
+	c.Signals = generateListOfSignals(r, 0, maxSignalNumber)
 
 	return &c
 }
@@ -942,6 +940,7 @@ func generateContainerInitProcess(r *rand.Rand) containerInitProcess {
 func generateContainerExecProcess(r *rand.Rand) containerExecProcess {
 	return containerExecProcess{
 		Command: generateCommand(r),
+		Signals: generateListOfSignals(r, 0, maxSignalNumber),
 	}
 }
 
@@ -1113,6 +1112,46 @@ func generateMounts(r *rand.Rand) []mountInternal {
 	return mounts
 }
 
+func generateListOfSignals(r *rand.Rand, atLeast int32, atMost int32) []syscall.Signal {
+	numSignals := int(atLeastNAtMostM(r, atLeast, atMost))
+	signalSet := make(map[syscall.Signal]struct{})
+
+	for i := 0; i < numSignals; i++ {
+		signal := generateSignal(r)
+		signalSet[signal] = struct{}{}
+	}
+
+	var signals []syscall.Signal
+	for k := range signalSet {
+		signals = append(signals, k)
+	}
+
+	return signals
+}
+
+func generateSignal(r *rand.Rand) syscall.Signal {
+	return syscall.Signal(atLeastOneAtMost(r, maxSignalNumber))
+}
+
+func generateFragment(r *rand.Rand) *fragment {
+	possibleIncludes := []string{"containers", "fragments", "env_rules", "external_processes"}
+	numChoices := int(atLeastOneAtMost(r, int32(len(possibleIncludes))))
+	includes := randChooseStrings(r, possibleIncludes, numChoices, false)
+	return &fragment{
+		issuer:     randString(r, maxGeneratedFragmentIssuerLength),
+		feed:       randString(r, maxGeneratedFragmentFeedLength),
+		minimumSVN: generateSVN(r),
+		includes:   includes,
+	}
+}
+
+func generateSVN(r *rand.Rand) string {
+	major := randMinMax(r, 0, maxGeneratedVersion)
+	minor := randMinMax(r, 0, maxGeneratedVersion)
+	patch := randMinMax(r, 0, maxGeneratedVersion)
+	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
+}
+
 func selectContainerFromConstraints(constraints *generatedConstraints, r *rand.Rand) *securityPolicyContainer {
 	numberOfContainersInConstraints := len(constraints.containers)
 	return constraints.containers[r.Intn(numberOfContainersInConstraints)]
@@ -1274,6 +1313,34 @@ func randMinMax(r *rand.Rand, min int32, max int32) int32 {
 	return r.Int31n(max-min+1) + min
 }
 
+func randChoices(r *rand.Rand, numChoices int, numItems int, replacement bool) []int {
+	if !replacement {
+		shuffle := r.Perm(numItems)
+		if numChoices > numItems {
+			return shuffle
+		}
+
+		return shuffle[:numChoices]
+	}
+
+	choices := make([]int, numChoices)
+	for i := 0; i < numChoices; i++ {
+		choices[i] = r.Intn(numItems)
+	}
+
+	return choices
+}
+
+func randChooseStrings(r *rand.Rand, items []string, numChoices int, replacement bool) []string {
+	numItems := len(items)
+	choiceIndices := randChoices(r, numChoices, numItems, false)
+	choices := make([]string, numChoices)
+	for i, index := range choiceIndices {
+		choices[i] = items[index]
+	}
+	return choices
+}
+
 func atLeastNAtMostM(r *rand.Rand, min, max int32) int32 {
 	return randMinMax(r, min, max)
 }
@@ -1289,6 +1356,8 @@ func atMost(r *rand.Rand, most int32) int32 {
 type generatedConstraints struct {
 	containers        []*securityPolicyContainer
 	externalProcesses []*externalProcess
+	plan9Mounts       []string
+	fragments         []*fragment
 }
 
 type containerInitProcess struct {

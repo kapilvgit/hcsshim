@@ -15,6 +15,14 @@ deviceHash_ok {
     input.deviceHash == layer
 }
 
+deviceHash_ok {
+    some issuer in data.metadata.issuers
+    some feed in issuer.feeds
+    some container in feed.containers
+    some layer in container.layers
+    input.deviceHash == layer
+}
+
 default mount_device := {"allowed": false}
 
 mount_device := {"devices": devices, "allowed": true} {
@@ -51,19 +59,45 @@ overlay_exists {
     data.metadata.matches[input.containerID]
 }
 
+overlay_mounted(target) {
+    data.metadata.overlayTargets[target]
+}
+
 default mount_overlay := {"allowed": false}
 
-mount_overlay := {"matches": matches, "allowed": true} {
+mount_overlay := {"matches": matches, "overlayTargets": overlay_targets, "allowed": true} {
     not overlay_exists
-    containers := [container |
+    policy_containers := [container |
         some container in data.policy.containers
         layerPaths_ok(container.layers)
     ]
+    fragment_containers := [container |
+        some issuer in data.metadata.issuers
+        some feed in issuer.feeds
+        some container in feed.containers
+        layerPaths_ok(container.layers)
+    ]
+    containers := array.concat(policy_containers, fragment_containers)
     count(containers) > 0
     matches := {
         "action": "add",
         "key": input.containerID,
         "value": containers
+    }
+    overlay_targets := {
+        "action": "add",
+        "key": input.target,
+        "value": true
+    }
+}
+
+default unmount_overlay := {"allowed": false}
+
+unmount_overlay := {"overlayTargets": overlay_targets, "allowed": true} {
+    overlay_mounted(input.unmountTarget)
+    overlay_targets := {
+        "action": "remove",
+        "key": input.unmountTarget
     }
 }
 
@@ -215,6 +249,83 @@ exec_in_container := {"matches": matches, "allowed": true} {
     }
 }
 
+default shutdown_container := {"allowed": false}
+
+shutdown_container := {"started": remove, "matches": remove, "allowed": true} {
+    container_started
+    remove := {
+        "action": "remove",
+        "key": input.containerID,
+    }
+}
+
+default signal_container_process := {"allowed": false}
+
+signal_container_process := {"matches": matches, "allowed": true} {
+    container_started
+    input.isInitProcess
+    containers := [container |
+        some container in data.metadata.matches[input.containerID]
+        signal_ok(container.signals)
+    ]
+    count(containers) > 0
+    matches := {
+        "action": "update",
+        "key": input.containerID,
+        "value": containers
+    }
+}
+
+signal_container_process := {"matches": matches, "allowed": true} {
+    container_started
+    not input.isInitProcess
+    containers := [container |
+        some container in data.metadata.matches[input.containerID]
+        some process in container.exec_processes
+        command_ok(process.command)
+        signal_ok(process.signals)
+    ]
+    count(containers) > 0
+    matches := {
+        "action": "update",
+        "key": input.containerID,
+        "value": containers
+    }
+}
+
+signal_ok(signals) {
+    some signal in signals
+    input.signal == signal
+}
+
+plan9_mounted(target) {
+    data.metadata.p9mounts[target]
+}
+
+default plan9_mount := {"allowed": false}
+
+plan9_mount := {"p9mounts": p9mounts, "allowed": true} {
+    not plan9_mounted(input.target)
+    some p9mount in data.policy.plan9_mounts
+    input.target == p9mount
+    p9mounts := {
+        "action": "add",
+        "key": input.target,
+        "value": true
+    }
+}
+
+default plan9_unmount := {"allowed": false}
+
+plan9_unmount := {"p9mounts": p9mounts, "allowed": true} {
+    plan9_mounted(input.target)
+    p9mounts := {
+        "action": "remove",
+        "key": input.target,
+    }
+}
+
+
 default enforcement_point_info := {"available": false, "allowed": false, "unknown": true, "invalid": false}
 
 enforcement_point_info := {"available": available, "allowed": allowed, "unknown": false, "invalid": false} {
@@ -236,6 +347,90 @@ exec_external := {"allowed": true} {
     command_ok(process.command)
     envList_ok(process.env_rules)
     workingDirectory_ok(process.working_dir)
+}
+
+default fragment_containers := []
+fragment_containers := data[input.namespace].containers
+
+default fragment_fragments := []
+fragment_fragments := data[input.namespace].fragments
+
+default fragment_external_processes := []
+fragment_external_processes := data[input.namespace].external_processes
+
+default fragment_plan9_mounts := []
+fragment_plan9_mounts := data[input.namespace].plan9_mounts
+
+extract_feed(includes) := feed {
+    objects := {
+        "containers": fragment_containers,
+        "fragments": fragment_fragments,
+        "external_processes": fragment_external_processes,
+        "plan9_mounts": fragment_plan9_mounts
+    }
+
+    feed := {
+        include: objects[include] | include := includes[_]
+    }
+}
+
+issuer_exists(iss) {
+    data.metadata.issuers[iss]
+}
+
+update_issuer(includes) := issuer {
+    old_feeds := data.metadata.issuers[input.issuer]
+    new_feed := {
+        "feeds": {
+            input.feed: extract_feed(includes)
+        }
+    }
+    issuer := object.union(old_feeds, new_feed)
+}
+
+update_issuer(includes) := issuer {
+    not issuer_exists(input.issuer)
+    issuer := {
+        "feeds": {
+            input.feed: extract_feed(includes)
+        }
+    }
+}
+
+default load_fragment := {"allowed": false}
+
+fragment_ok(fragment) {
+    semver.compare(data[input.namespace].svn, fragment.minimum_svn) >= 0
+    input.issuer == fragment.issuer
+    input.feed == fragment.feed
+}
+
+load_fragment := {"issuers": issuers, "add_module": add_module, "allowed": true} {
+    some iss in data.metadata.issuers
+    some feed in iss.feeds
+    some fragment in feed.fragments
+    fragment_ok(fragment)
+    issuer := update_issuer(fragment.includes)
+    issuers := {
+        "action": "update",
+        "key": input.issuer,
+        "value": issuer
+    }
+
+    add_module := "namespace" in fragment.includes
+}
+
+load_fragment := {"issuers": issuers, "add_module": add_module, "allowed": true} {
+    some fragment in data.policy.fragments
+    fragment_ok(fragment)
+    issuer := update_issuer(fragment.includes)
+    issuers := {
+        "action": "update",
+        "key": input.issuer,
+        "value": issuer
+    }
+
+    add_module := "namespace" in fragment.includes
 }
 
 # error messages
@@ -261,7 +456,7 @@ errors["container already started"] {
 }
 
 errors["container not started"] {
-    input.rule == "exec_in_container"
+    input.rule in ["exec_in_container", "shutdown_container", "signal_container_process"]
     not container_started
 }
 
@@ -270,10 +465,22 @@ errors["overlay has already been mounted"] {
     overlay_exists
 }
 
+errors["no overlay at path to unmount"] {
+    input.rule == "unmount_overlay"
+    not overlay_mounted(input.unmountTarget)
+}
+
 default overlay_matches := false
 
 overlay_matches {
     some container in data.policy.containers
+    layerPaths_ok(container.layers)
+}
+
+overlay_matches {
+    some issuer in data.metadata.issuers
+    some feed in issuer.feeds
+    some container in feed.containers
     layerPaths_ok(container.layers)
 }
 
@@ -356,4 +563,33 @@ mountList_matches {
 errors["invalid mount list"] {
     input.rule == "create_container"
     not mountList_matches
+}
+
+default signal_allowed := false
+
+signal_allowed {
+    some container in data.metadata.matches[input.containerID]
+    signal_ok(container.signals)
+}
+
+signal_allowed {
+    some container in data.metadata.matches[input.containerID]
+    some process in container.exec_processes
+    command_ok(process.command)
+    signal_ok(process.signals)
+}
+
+errors["target isn't allowed to receive the signal"] {
+    input.rule == "signal_container_process"
+    not signal_allowed
+}
+
+errors["device already mounted at path"] {
+    input.rule == "plan9_mount"
+    plan9_mounted(input.target)
+}
+
+errors["no device at path to unmount"] {
+    input.rule == "plan9_unmount"
+    not plan9_mounted(input.unmountTarget)
 }
