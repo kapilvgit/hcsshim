@@ -11,6 +11,38 @@ type securityPolicyInternal struct {
 	Containers        []*securityPolicyContainer
 	ExternalProcesses []*externalProcess
 	Plan9Mounts       []string
+	Fragments         []*fragment
+}
+
+func newSecurityPolicyInternal(containers []*Container,
+	externalProcesses []ExternalProcessConfig,
+	plan9Mounts []string,
+	fragments []FragmentConfig) (*securityPolicyInternal, error) {
+	var policy securityPolicyInternal
+	policy.Containers = make([]*securityPolicyContainer, len(containers))
+	for i, cConf := range containers {
+		cInternal, err := cConf.toInternal()
+		if err != nil {
+			return nil, err
+		}
+		policy.Containers[i] = &cInternal
+	}
+
+	policy.ExternalProcesses = make([]*externalProcess, len(externalProcesses))
+	for i, pConf := range externalProcesses {
+		pInternal := pConf.toInternal()
+		policy.ExternalProcesses[i] = &pInternal
+	}
+
+	policy.Plan9Mounts = plan9Mounts
+
+	policy.Fragments = make([]*fragment, len(fragments))
+	for i, fConf := range fragments {
+		fInternal := fConf.toInternal()
+		policy.Fragments[i] = &fInternal
+	}
+
+	return &policy, nil
 }
 
 // Internal version of Container
@@ -56,6 +88,13 @@ type mountInternal struct {
 	Destination string
 	Type        string
 	Options     []string
+}
+
+type fragment struct {
+	issuer     string
+	feed       string
+	minimumSVN string
+	includes   []string
 }
 
 func (c Container) toInternal() (securityPolicyContainer, error) {
@@ -162,6 +201,15 @@ func (p ExternalProcessConfig) toInternal() externalProcess {
 			Required: true,
 		}},
 		workingDir: p.WorkingDir,
+	}
+}
+
+func (f FragmentConfig) toInternal() fragment {
+	return fragment{
+		issuer:     f.Issuer,
+		feed:       f.Feed,
+		minimumSVN: f.MinimumSVN,
+		includes:   f.Includes,
 	}
 }
 

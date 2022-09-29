@@ -21,26 +21,25 @@ import (
 
 const (
 	// variables that influence generated test fixtures
-	minStringLength                            = 10
-	maxContainersInGeneratedConstraints        = 32
-	maxExternalProcessesInGeneratedConstraints = 16
-	maxLayersInGeneratedContainer              = 32
-	maxGeneratedContainerID                    = 1000000
-	maxGeneratedCommandLength                  = 128
-	maxGeneratedCommandArgs                    = 12
-	maxGeneratedEnvironmentVariables           = 24
-	maxGeneratedEnvironmentVariableRuleLength  = 64
-	maxGeneratedEnvironmentVariableRules       = 12
-	maxGeneratedMountTargetLength              = 256
-	rootHashLength                             = 64
-	maxGeneratedMounts                         = 4
-	maxGeneratedMountSourceLength              = 32
-	maxGeneratedMountDestinationLength         = 32
-	maxGeneratedMountOptions                   = 5
-	maxGeneratedMountOptionLength              = 32
-	maxGeneratedExecProcesses                  = 12
-	maxGeneratedWorkingDirLength               = 128
-	maxSignalNumber                            = 64
+	minStringLength                           = 10
+	maxContainersInGeneratedConstraints       = 32
+	maxLayersInGeneratedContainer             = 32
+	maxGeneratedContainerID                   = 1000000
+	maxGeneratedCommandLength                 = 128
+	maxGeneratedCommandArgs                   = 12
+	maxGeneratedEnvironmentVariables          = 24
+	maxGeneratedEnvironmentVariableRuleLength = 64
+	maxGeneratedEnvironmentVariableRules      = 12
+	maxGeneratedMountTargetLength             = 256
+	rootHashLength                            = 64
+	maxGeneratedMounts                        = 4
+	maxGeneratedMountSourceLength             = 32
+	maxGeneratedMountDestinationLength        = 32
+	maxGeneratedMountOptions                  = 5
+	maxGeneratedMountOptionLength             = 32
+	maxGeneratedExecProcesses                 = 12
+	maxGeneratedWorkingDirLength              = 128
+	maxSignalNumber                           = 64
 	// additional consts
 	// the standard enforcer tests don't do anything with the encoded policy
 	// string. this const exists to make that explicit
@@ -244,7 +243,7 @@ func Test_EnforceOverlayMountPolicy_Matches(t *testing.T) {
 
 // Tests the specific case of trying to mount the same overlay twice using the /// same container id. This should be disallowed.
 func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice(t *testing.T) {
-	gc := generateConstraints(testRand, 1, 0)
+	gc := generateConstraints(testRand, 1)
 	tc, err := setupContainerWithOverlay(gc, true)
 	if err != nil {
 		t.Fatalf("expected nil error got: %v", err)
@@ -299,7 +298,7 @@ func Test_EnforceOverlayMountPolicy_Multiple_Instances_Same_Container(t *testing
 // policy, we should be able to create a single container for that overlay
 // but no more than that one.
 func Test_EnforceOverlayMountPolicy_Overlay_Single_Container_Twice_With_Different_IDs(t *testing.T) {
-	p := generateConstraints(testRand, 1, 0)
+	p := generateConstraints(testRand, 1)
 	sp := NewStandardSecurityPolicyEnforcer(p.containers, ignoredEncodedPolicyString)
 
 	var containerIDOne, containerIDTwo string
@@ -501,7 +500,7 @@ func Test_EnforceEnvironmentVariablePolicy_Matches(t *testing.T) {
 }
 
 func Test_EnforceEnvironmentVariablePolicy_Re2Match(t *testing.T) {
-	p := generateConstraints(testRand, 1, 0)
+	p := generateConstraints(testRand, 1)
 
 	container := generateConstraintsContainer(testRand, 1, 1)
 	// add a rule to re2 match
@@ -854,7 +853,7 @@ func (*SecurityPolicy) Generate(r *rand.Rand, _ int) reflect.Value {
 }
 
 func (*generatedConstraints) Generate(r *rand.Rand, _ int) reflect.Value {
-	c := generateConstraints(r, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
+	c := generateConstraints(r, maxContainersInGeneratedConstraints)
 	return reflect.ValueOf(c)
 }
 
@@ -892,7 +891,7 @@ func setupContainerWithOverlay(gc *generatedConstraints, valid bool) (tc *testCo
 	}, nil
 }
 
-func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses int32) *generatedConstraints {
+func generateConstraints(r *rand.Rand, maxContainers int32) *generatedConstraints {
 	var containers []*securityPolicyContainer
 
 	numContainers := (int)(atLeastOneAtMost(r, maxContainers))
@@ -900,21 +899,11 @@ func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses
 		containers = append(containers, generateConstraintsContainer(r, 1, maxLayersInGeneratedContainer))
 	}
 
-	var externalProcesses []*externalProcess
-
-	numExternalProcesses := 0
-	if maxExternalProcesses >= 1 {
-		numExternalProcesses = (int)(atLeastOneAtMost(r, maxExternalProcesses))
-	}
-
-	for i := 0; i < numExternalProcesses; i++ {
-		externalProcesses = append(externalProcesses, generateExternalProcess(r))
-	}
-
 	return &generatedConstraints{
 		containers:        containers,
-		externalProcesses: externalProcesses,
+		externalProcesses: make([]*externalProcess, 0),
 		plan9Mounts:       make([]string, 0),
+		fragments:         make([]*fragment, 0),
 	}
 }
 
@@ -952,14 +941,6 @@ func generateContainerExecProcess(r *rand.Rand) containerExecProcess {
 
 func generateRootHash(r *rand.Rand) string {
 	return randString(r, rootHashLength)
-}
-
-func generateExternalProcess(r *rand.Rand) *externalProcess {
-	return &externalProcess{
-		command:    generateCommand(r),
-		envRules:   generateEnvironmentVariableRules(r),
-		workingDir: generateWorkingDir(r),
-	}
 }
 
 func generateWorkingDir(r *rand.Rand) string {
@@ -1145,47 +1126,45 @@ func selectContainerFromConstraints(constraints *generatedConstraints, r *rand.R
 }
 
 type dataGenerator struct {
-	rng               *rand.Rand
-	mountTargets      map[string]struct{}
-	containerIDs      map[string]struct{}
-	sandboxIDs        map[string]struct{}
-	enforcementPoints map[string]struct{}
+	rng                *rand.Rand
+	mountTargets       map[string]struct{}
+	containerIDs       map[string]struct{}
+	sandboxIDs         map[string]struct{}
+	enforcementPoints  map[string]struct{}
+	fragmentIssuers    map[string]struct{}
+	fragmentFeeds      map[string]struct{}
+	fragmentNamespaces map[string]struct{}
 }
 
 func newDataGenerator(rng *rand.Rand) *dataGenerator {
 	return &dataGenerator{
-		rng:          rng,
-		mountTargets: map[string]struct{}{},
-		containerIDs: map[string]struct{}{},
-		sandboxIDs:   map[string]struct{}{},
-		enforcementPoints: map[string]struct{}{
-			"mount_device":      {},
-			"mount_overlay":     {},
-			"create_container":  {},
-			"unmount_device":    {},
-			"exec_in_container": {},
-		},
+		rng:                rng,
+		mountTargets:       map[string]struct{}{},
+		containerIDs:       map[string]struct{}{},
+		sandboxIDs:         map[string]struct{}{},
+		enforcementPoints:  map[string]struct{}{},
+		fragmentIssuers:    map[string]struct{}{},
+		fragmentFeeds:      map[string]struct{}{},
+		fragmentNamespaces: map[string]struct{}{},
+	}
+}
+
+func (gen *dataGenerator) uniqueString(values map[string]struct{}, generator func(*rand.Rand) string) string {
+	for {
+		s := generator(gen.rng)
+		if _, ok := values[s]; !ok {
+			values[s] = struct{}{}
+			return s
+		}
 	}
 }
 
 func (gen *dataGenerator) uniqueMountTarget() string {
-	for {
-		t := generateMountTarget(gen.rng)
-		if _, ok := gen.mountTargets[t]; !ok {
-			gen.mountTargets[t] = struct{}{}
-			return t
-		}
-	}
+	return gen.uniqueString(gen.mountTargets, generateMountTarget)
 }
 
 func (gen *dataGenerator) uniqueContainerID() string {
-	for {
-		t := generateContainerID(gen.rng)
-		if _, ok := gen.containerIDs[t]; !ok {
-			gen.containerIDs[t] = struct{}{}
-			return t
-		}
-	}
+	return gen.uniqueString(gen.containerIDs, generateContainerID)
 }
 
 func (gen *dataGenerator) createValidOverlayForContainer(enforcer SecurityPolicyEnforcer, container *securityPolicyContainer) ([]string, error) {
@@ -1316,6 +1295,7 @@ type generatedConstraints struct {
 	containers        []*securityPolicyContainer
 	externalProcesses []*externalProcess
 	plan9Mounts       []string
+	fragments         []*fragment
 }
 
 type containerInitProcess struct {
