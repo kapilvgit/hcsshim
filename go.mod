@@ -23,6 +23,8 @@ require (
 	github.com/opencontainers/runc v1.1.2
 	github.com/opencontainers/runtime-spec v1.0.3-0.20210326190908-1c3f411f0417
 	github.com/pkg/errors v0.9.1
+	github.com/sirupsen/logrus v1.9.0
+	github.com/urfave/cli v1.22.4
 	github.com/veraison/go-cose v1.0.0-rc.1
 	github.com/vishvananda/netlink v1.1.1-0.20210330154013-f5de75959ad5
 	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f
