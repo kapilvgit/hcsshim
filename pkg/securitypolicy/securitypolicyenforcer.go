@@ -87,9 +87,7 @@ func createOpenDoorEnforcer(base64EncodedPolicy string, _, _ []oci.Mount) (Secur
 	if !securityPolicy.AllowAll || policyContainers.Length > 0 || len(policyContainers.Elements) > 0 {
 		return nil, ErrInvalidOpenDoorPolicy
 	}
-	return &OpenDoorSecurityPolicyEnforcer{
-		encodedSecurityPolicy: base64EncodedPolicy,
-	}, nil
+	return &OpenDoorSecurityPolicyEnforcer{}, nil
 }
 
 func (c Containers) toInternal() ([]*securityPolicyContainer, error) {
@@ -756,7 +754,6 @@ func (pe *StandardSecurityPolicyEnforcer) EncodedSecurityPolicy() string {
 }
 
 type OpenDoorSecurityPolicyEnforcer struct {
-	encodedSecurityPolicy string
 }
 
 var _ SecurityPolicyEnforcer = (*OpenDoorSecurityPolicyEnforcer)(nil)
@@ -814,7 +811,7 @@ func (OpenDoorSecurityPolicyEnforcer) LoadFragment(_ string, _ string, _ string)
 }
 
 func (oe *OpenDoorSecurityPolicyEnforcer) EncodedSecurityPolicy() string {
-	return oe.encodedSecurityPolicy
+	return ""
 }
 
 type ClosedDoorSecurityPolicyEnforcer struct {

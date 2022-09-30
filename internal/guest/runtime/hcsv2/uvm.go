@@ -124,7 +124,7 @@ func (h *Host) SetConfidentialUVMOptions(enforcerType string, base64EncodedPolic
 // from the incoming fragment.
 //
 // TODO (maksiman): add fragment validation and injection logic
-func (*Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
+func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
 	log.G(ctx).WithField("fragment", fmt.Sprintf("%+v", fragment)).Debug("GCS Host.InjectFragment")
 
 	raw, err := base64.StdEncoding.DecodeString(fragment.Fragment)
@@ -145,10 +145,14 @@ func (*Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSec
 		log.G(ctx).Printf("pubkey:\n%s\n", result["pubkey"])
 		log.G(ctx).Printf("payload:\n%s\n", result["payload"])
 		// now offer the payload fragment to the policy
-		// h.securityPolicyEnforcer.OfferFragment(result)
 
+		var issuer = result["iss"]
+		var feed = result["pubkey"]
+		var code = result["payload"]
+
+		err = h.securityPolicyEnforcer.LoadFragment(issuer, feed, code)
 	}
-	return nil
+	return err
 }
 
 func (h *Host) SecurityPolicyEnforcer() securitypolicy.SecurityPolicyEnforcer {
@@ -339,10 +343,16 @@ func (h *Host) CreateContainer(ctx context.Context, id string, settings *prot.VM
 	// completes to bypass it; the security policy variable cannot be included
 	// in the security policy as its value is not available security policy
 	// construction time.
-	if oci.ParseAnnotationsBool(ctx, settings.OCISpecification.Annotations, annotations.SecurityPolicyEnv, false) {
-		secPolicyEnv := fmt.Sprintf("UVM_SECURITY_POLICY=%s", h.securityPolicyEnforcer.EncodedSecurityPolicy())
-		uvmReferenceInfo := fmt.Sprintf("UVM_REFERENCE_INFO=%s", h.uvmReferenceInfo)
-		settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, secPolicyEnv, uvmReferenceInfo)
+	if oci.ParseAnnotationsBool(ctx, settings.OCISpecification.Annotations, annotations.SecurityPolicyEnv, true) {
+		var encodedPolicy = h.securityPolicyEnforcer.EncodedSecurityPolicy()
+		if len(encodedPolicy) > 0 {
+			secPolicyEnv := fmt.Sprintf("UVM_SECURITY_POLICY=%s", encodedPolicy)
+			settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, secPolicyEnv)
+		}
+		if len(h.uvmReferenceInfo) > 0 {
+			uvmReferenceInfo := fmt.Sprintf("UVM_REFERENCE_INFO=%s", h.uvmReferenceInfo)
+			settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, uvmReferenceInfo)
+		}
 	}
 
 	// Create the BundlePath
@@ -516,9 +526,9 @@ func (h *Host) ExecProcess(ctx context.Context, containerID string, params prot.
 	var pid int
 	var c *Container
 	if params.IsExternal || containerID == UVMContainerID {
-		err = h.securityPolicyEnforcer.EnforceExecExternalProcessPolicy(params.OCIProcess.Args, params.OCIProcess.Env, params.OCIProcess.Cwd)
+		err = h.securityPolicyEnforcer.EnforceExecExternalProcessPolicy(params.CommandArgs, processParamEnvToOCIEnv(params.Environment), params.WorkingDirectory)
 		if err != nil {
-			return pid, errors.Wrapf(err, "exec in container denied due to policy")
+			return pid, errors.Wrapf(err, "exec in UVM denied due to policy")
 		}
 		pid, err = h.runExternalProcess(ctx, params, conSettings)
 	} else if c, err = h.GetCreatedContainer(containerID); err == nil {
