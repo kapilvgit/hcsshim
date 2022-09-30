@@ -1279,6 +1279,34 @@ func randMinMax(r *rand.Rand, min int32, max int32) int32 {
 	return r.Int31n(max-min+1) + min
 }
 
+func randChoices(r *rand.Rand, numChoices int, numItems int, replacement bool) []int {
+	if !replacement {
+		shuffle := r.Perm(numItems)
+		if numChoices > numItems {
+			return shuffle
+		}
+
+		return shuffle[:numChoices]
+	}
+
+	choices := make([]int, numChoices)
+	for i := 0; i < numChoices; i++ {
+		choices[i] = r.Intn(numItems)
+	}
+
+	return choices
+}
+
+func randChooseStrings(r *rand.Rand, items []string, numChoices int, replacement bool) []string {
+	numItems := len(items)
+	choiceIndices := randChoices(r, numChoices, numItems, false)
+	choices := make([]string, numChoices)
+	for i, index := range choiceIndices {
+		choices[i] = items[index]
+	}
+	return choices
+}
+
 func atLeastNAtMostM(r *rand.Rand, min, max int32) int32 {
 	return randMinMax(r, min, max)
 }

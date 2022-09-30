@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,9 +54,9 @@ func Test_InvalidWaitPath_5SecondTimeout(t *testing.T) {
 
 	end := time.Now()
 	diff := end.Sub(start)
-	diffSeconds := math.Round(diff.Seconds())
-	if diffSeconds != 5 {
-		t.Fatalf("expected 5 second timeout, got: %f", diffSeconds)
+	diffSeconds := diff.Seconds()
+	if diffSeconds < 5 {
+		t.Fatalf("expected at least 5 second timeout, got: %f", diffSeconds)
 	}
 }
 

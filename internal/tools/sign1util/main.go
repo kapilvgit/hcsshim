@@ -1,0 +1,160 @@
+package main
+
+import (
+	"flag"
+	"os"
+
+	"log"
+
+	"github.com/Microsoft/hcsshim/pkg/cosesign1"
+	"github.com/veraison/go-cose"
+)
+
+func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, requireKnownAuthority bool, verbose bool) (map[string]string, error) {
+	coseBlob := cosesign1.ReadBlob(inputFilename)
+	var optionalPubKeyPEM []byte
+	if optionalPubKeyFilename != "" {
+		optionalPubKeyPEM = cosesign1.ReadBlob(optionalPubKeyFilename)
+	}
+	var results map[string]string
+	var err error
+	results, err = cosesign1.UnpackAndValidateCOSE1CertChain(coseBlob, optionalPubKeyPEM, requireKnownAuthority, verbose)
+	if err != nil {
+		log.Print("checkCoseSign1 failed - " + err.Error())
+	} else if len(results) == 0 {
+		log.Print("checkCoseSign1 did not pass, result map is empty.")
+	} else {
+		log.Print("checkCoseSign1 passed:")
+		log.Printf("iss:\n%s\n", results["iss"])
+		log.Printf("pubkey:\n%s\n", results["pubkey"])
+		log.Printf("content type:\n%s\n", results["cty"])
+		log.Printf("payload:\n%s\n", results["payload"])
+	}
+	return results, err
+}
+
+func createCoseSign1(payloadFilename string, contentType string, chainFilename string, keyFilename string, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
+
+	var payloadBlob = cosesign1.ReadBlob(payloadFilename)
+	var keyPem = cosesign1.ReadBlob(keyFilename)
+	var chainPem = cosesign1.ReadBlob(chainFilename)
+
+	return cosesign1.CreateCoseSign1(payloadBlob, contentType, chainPem, keyPem, saltType, algo, verbose)
+}
+
+// example scitt usage to try tro match
+// scitt sign --claims <fragment>.rego --content-type application/unknown+json --did-doc ~/keys/did.json --key ~/keys/key.pem --out <fragment>.cose
+func main() {
+	var payloadFilename string
+	var contentType string
+	var chainFilename string
+	var keyFilename string
+	var outputFilename string
+	var outputKeyFilename string
+	var inputFilename string
+	var saltType string
+	var requireKNownAuthority bool
+	var verbose bool
+	var algo string
+
+	createCmd := flag.NewFlagSet("create", flag.ExitOnError)
+
+	createCmd.StringVar(&payloadFilename, "claims", "fragment.rego", "filename of payload")
+	createCmd.StringVar(&contentType, "content-type", "application/unknown+json", "content type, eg appliation/json")
+	createCmd.StringVar(&chainFilename, "cert", "pubcert.pem", "key or cert file to use (pem)")
+	createCmd.StringVar(&keyFilename, "key", "key.pem", "key to sign with (private key of the leaf of the chain)")
+	createCmd.StringVar(&outputFilename, "out", "out.cose", "output file")
+	createCmd.StringVar(&outputKeyFilename, "keyout", "out.pem", "output file")
+	createCmd.StringVar(&saltType, "salt", "zero", "rand or zero")
+	createCmd.StringVar(&algo, "algo", "PS384", "PS256, PS384 etc")
+	createCmd.BoolVar(&verbose, "verbose", false, "verbose output")
+
+	checkCmd := flag.NewFlagSet("check", flag.ExitOnError)
+
+	checkCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
+	checkCmd.StringVar(&keyFilename, "pub", "", "input public key (PEM)")
+	checkCmd.BoolVar(&requireKNownAuthority, "requireKNownAuthority", false, "false => allow chain validation to fail")
+	checkCmd.BoolVar(&verbose, "verbose", false, "verbose output")
+
+	printCmd := flag.NewFlagSet("print", flag.ExitOnError)
+
+	printCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
+
+	leafKeyCmd := flag.NewFlagSet("leafkey", flag.ExitOnError)
+
+	leafKeyCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
+	leafKeyCmd.StringVar(&outputFilename, "out", "leafkey.pem", "output file")
+	leafKeyCmd.BoolVar(&verbose, "verbose", false, "verbose output")
+
+	if len(os.Args) > 1 {
+		action := os.Args[1]
+		switch action {
+		case "create":
+			err := createCmd.Parse(os.Args[2:])
+			if err == nil {
+				algorithm, err := cosesign1.StringToAlgorithm(algo)
+				var raw []byte
+				if err == nil {
+					raw, err = createCoseSign1(payloadFilename, contentType, chainFilename, keyFilename, saltType, algorithm, verbose)
+				}
+
+				if err != nil {
+					log.Print("failed create: " + err.Error())
+				} else {
+					if len(outputFilename) > 0 {
+						err = cosesign1.WriteBlob(outputFilename, raw)
+						if err != nil {
+							log.Printf("writeBlob failed for %s\n", outputFilename)
+						}
+					}
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
+			}
+
+		case "check":
+			err := checkCmd.Parse(os.Args[2:])
+			if err == nil {
+				_, err := checkCoseSign1(inputFilename, keyFilename, requireKNownAuthority, verbose)
+				if err != nil {
+					log.Print("failed check: " + err.Error())
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
+			}
+
+		case "print":
+			err := printCmd.Parse(os.Args[2:])
+			if err == nil {
+				_, err := checkCoseSign1(inputFilename, "", false, true)
+				if err != nil {
+					log.Print("failed print: " + err.Error())
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
+			}
+
+		case "leafkey":
+			err := leafKeyCmd.Parse(os.Args[2:])
+			if err == nil {
+				results, err := checkCoseSign1(inputFilename, "", false, verbose)
+				if err == nil {
+					err = cosesign1.WriteString(outputFilename, results["pubkey"])
+					if err != nil {
+						log.Printf("writing the pubkey to %s failed: %s", outputFilename, err.Error())
+					}
+				} else {
+					log.Printf("reading the COSE Sign1 from %s failed: %s", inputFilename, err.Error())
+				}
+			} else {
+				log.Print("args parse failed: " + err.Error())
+			}
+
+		default:
+			os.Stderr.WriteString("Usage: sign1util [create|check|print|leafkey] -h\n")
+		}
+
+	} else {
+		os.Stderr.WriteString("Usage: sign1util [create|check|print|leafkey] -h\n")
+	}
+}
