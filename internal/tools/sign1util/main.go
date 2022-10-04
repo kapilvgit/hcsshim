@@ -50,6 +50,7 @@ func main() {
 	var chainFilename string
 	var keyFilename string
 	var outputFilename string
+	var outputCertFilename string
 	var outputKeyFilename string
 	var inputFilename string
 	var saltType string
@@ -64,7 +65,6 @@ func main() {
 	createCmd.StringVar(&chainFilename, "cert", "pubcert.pem", "key or cert file to use (pem)")
 	createCmd.StringVar(&keyFilename, "key", "key.pem", "key to sign with (private key of the leaf of the chain)")
 	createCmd.StringVar(&outputFilename, "out", "out.cose", "output file")
-	createCmd.StringVar(&outputKeyFilename, "keyout", "out.pem", "output file")
 	createCmd.StringVar(&saltType, "salt", "zero", "rand or zero")
 	createCmd.StringVar(&algo, "algo", "PS384", "PS256, PS384 etc")
 	createCmd.BoolVar(&verbose, "verbose", false, "verbose output")
@@ -80,11 +80,12 @@ func main() {
 
 	printCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
 
-	leafKeyCmd := flag.NewFlagSet("leafkey", flag.ExitOnError)
+	leafCmd := flag.NewFlagSet("leaf", flag.ExitOnError)
 
-	leafKeyCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
-	leafKeyCmd.StringVar(&outputFilename, "out", "leafkey.pem", "output file")
-	leafKeyCmd.BoolVar(&verbose, "verbose", false, "verbose output")
+	leafCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
+	leafCmd.StringVar(&outputKeyFilename, "keyout", "leafkey.pem", "leaf key output file")
+	leafCmd.StringVar(&outputCertFilename, "certout", "leafcert.pem", "leaf cert output file")
+	leafCmd.BoolVar(&verbose, "verbose", false, "verbose output")
 
 	if len(os.Args) > 1 {
 		action := os.Args[1]
@@ -134,14 +135,19 @@ func main() {
 				log.Print("args parse failed: " + err.Error())
 			}
 
-		case "leafkey":
-			err := leafKeyCmd.Parse(os.Args[2:])
+		case "leaf":
+			err := leafCmd.Parse(os.Args[2:])
 			if err == nil {
 				results, err := checkCoseSign1(inputFilename, "", false, verbose)
 				if err == nil {
-					err = cosesign1.WriteString(outputFilename, results["pubkey"])
+					err = cosesign1.WriteString(outputKeyFilename, results["pubkey"])
 					if err != nil {
-						log.Printf("writing the pubkey to %s failed: %s", outputFilename, err.Error())
+						log.Printf("writing the leaf pub key to %s failed: %s", outputKeyFilename, err.Error())
+					} else {
+						err = cosesign1.WriteString(outputCertFilename, results["iss"])
+						if err != nil {
+							log.Printf("writing the leaf cert to %s failed: %s", outputCertFilename, err.Error())
+						}
 					}
 				} else {
 					log.Printf("reading the COSE Sign1 from %s failed: %s", inputFilename, err.Error())
