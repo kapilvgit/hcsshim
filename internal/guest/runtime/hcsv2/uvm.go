@@ -136,7 +136,7 @@ func (h *Host) SetConfidentialUVMOptions(ctx context.Context, r *guestresource.L
 // from the incoming fragment.
 //
 // TODO (maksiman): add fragment validation and injection logic
-func (*Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
+func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
 	log.G(ctx).WithField("fragment", fmt.Sprintf("%+v", fragment)).Debug("GCS Host.InjectFragment")
 
 	raw, err := base64.StdEncoding.DecodeString(fragment.Fragment)
@@ -150,15 +150,22 @@ func (*Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSec
 	result, err = cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil, false, true) // params raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool
 
 	if err != nil {
-		return fmt.Errorf("InjectFragment failed: %s", err.Error())
+		return fmt.Errorf("InjectFragment failed COSE validation: %s", err.Error())
 	} else {
 		log.G(ctx).Printf("iss:\n%s\n", result["iss"])
 		log.G(ctx).Printf("cty:\n%s\n", result["cty"])
 		log.G(ctx).Printf("pubkey:\n%s\n", result["pubkey"])
-		log.G(ctx).Printf("payload:\n%s\n", result["payload"])
-		// now offer the payload fragment to the policy
-		// h.securityPolicyEnforcer.OfferFragment(result)
+		//log.G(ctx).Printf("payload:\n%s\n", result["payload"])
 
+		// now offer the payload fragment to the policy
+		var issuer = result["iss"]
+        var feed = result["pubkey"]
+        var code = result["payload"]
+
+        err = h.securityPolicyEnforcer.LoadFragment(issuer, feed, code)
+		if err != nil {
+			return fmt.Errorf("InjectFragment failed policy load: %s", err.Error())
+		}
 	}
 	return nil
 }
@@ -534,7 +541,7 @@ func (h *Host) ExecProcess(ctx context.Context, containerID string, params prot.
 			params.WorkingDirectory,
 		)
 		if err != nil {
-			return pid, errors.Wrapf(err, "exec is denied due to policy")
+			return pid, errors.Wrapf(err, "exec in UVM denied due to policy")
 		}
 		pid, err = h.runExternalProcess(ctx, params, conSettings)
 	} else if c, err = h.GetCreatedContainer(containerID); err == nil {
