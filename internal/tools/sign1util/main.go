@@ -33,13 +33,13 @@ func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, require
 	return results, err
 }
 
-func createCoseSign1(payloadFilename string, contentType string, chainFilename string, keyFilename string, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
+func createCoseSign1(payloadFilename string, issuer string, feed string, contentType string, chainFilename string, keyFilename string, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
 
 	var payloadBlob = cosesign1.ReadBlob(payloadFilename)
 	var keyPem = cosesign1.ReadBlob(keyFilename)
 	var chainPem = cosesign1.ReadBlob(chainFilename)
 
-	return cosesign1.CreateCoseSign1(payloadBlob, contentType, chainPem, keyPem, saltType, algo, verbose)
+	return cosesign1.CreateCoseSign1(payloadBlob, issuer, feed, contentType, chainPem, keyPem, saltType, algo, verbose)
 }
 
 // example scitt usage to try tro match
@@ -57,6 +57,8 @@ func main() {
 	var requireKNownAuthority bool
 	var verbose bool
 	var algo string
+	var feed string
+	var issuer string
 
 	createCmd := flag.NewFlagSet("create", flag.ExitOnError)
 
@@ -67,6 +69,8 @@ func main() {
 	createCmd.StringVar(&outputFilename, "out", "out.cose", "output file")
 	createCmd.StringVar(&saltType, "salt", "zero", "rand or zero")
 	createCmd.StringVar(&algo, "algo", "PS384", "PS256, PS384 etc")
+	createCmd.StringVar(&issuer, "issuer", "", "the party making the claims") // see https://ietf-scitt.github.io/draft-birkholz-scitt-architecture/draft-birkholz-scitt-architecture.html#name-terminology
+	createCmd.StringVar(&feed, "feed", "", "identifier for an artifact within the scope of an issuer")
 	createCmd.BoolVar(&verbose, "verbose", false, "verbose output")
 
 	checkCmd := flag.NewFlagSet("check", flag.ExitOnError)
@@ -96,7 +100,7 @@ func main() {
 				algorithm, err := cosesign1.StringToAlgorithm(algo)
 				var raw []byte
 				if err == nil {
-					raw, err = createCoseSign1(payloadFilename, contentType, chainFilename, keyFilename, saltType, algorithm, verbose)
+					raw, err = createCoseSign1(payloadFilename, issuer, feed, contentType, chainFilename, keyFilename, saltType, algorithm, verbose)
 				}
 
 				if err != nil {

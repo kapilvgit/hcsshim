@@ -34,7 +34,22 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 		log.Printf("algo %d aka %s", algo.(cose.Algorithm), algo.(cose.Algorithm))
 	}
 
-	x5RawChain := protected[cose.HeaderLabelX5Chain] // The spec says this is ordered - leaf, intermediates, root. X5Bag is unordered and woould need sorting
+	x5RawChain, x5RawChainPresent := protected[cose.HeaderLabelX5Chain] // The spec says this is ordered - leaf, intermediates, root. X5Bag is unordered and woould need sorting
+	if !x5RawChainPresent {
+		return nil, fmt.Errorf("x5Chain missing")
+	}
+
+	var issuer string
+	val, valPresent := protected[HeaderLabelIssuer]
+	if valPresent {
+		issuer = val.(string)
+	}
+
+	var feed string
+	val, valPresent = protected[HeaderLabelFeed]
+	if valPresent {
+		feed = val.(string)
+	}
 
 	// The HeaderLabelX5Chain entry in the cose header may be a blob (single cert) or an array of blobs (a chain) see https://datatracker.ietf.org/doc/draft-ietf-cose-x509/08/
 
@@ -109,7 +124,9 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 	var leafPubKeyPem = keyToPEM(leafPubKey)
 
 	var results = map[string]string{
-		"iss":     leafPem,
+		"pubcert": leafPem,
+		"feed":    feed,
+		"iss":     issuer,
 		"pubkey":  leafPubKeyPem,
 		"cty":     msg.Headers.Protected[cose.HeaderLabelContentType].(string),
 		"payload": string(msg.Payload),

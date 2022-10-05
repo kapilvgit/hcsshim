@@ -12,7 +12,15 @@ import (
 	"github.com/veraison/go-cose"
 )
 
-func CreateCoseSign1(payloadBlob []byte, contentType string, chainPem []byte, keyPem []byte, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
+// Header indices to match SCITT
+// see https://ietf-scitt.github.io/draft-birkholz-scitt-architecture/draft-birkholz-scitt-architecture.html#name-envelope-and-claim-format
+
+const (
+	HeaderLabelIssuer int64 = 258
+	HeaderLabelFeed   int64 = 259
+)
+
+func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType string, chainPem []byte, keyPem []byte, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
 	var err error
 
 	var remaining []byte
@@ -94,6 +102,15 @@ func CreateCoseSign1(payloadBlob []byte, contentType string, chainPem []byte, ke
 			cose.HeaderLabelContentType: contentType,
 			cose.HeaderLabelX5Chain:     chainBytes,
 		},
+	}
+
+	// see https://ietf-scitt.github.io/draft-birkholz-scitt-architecture/draft-birkholz-scitt-architecture.html#name-envelope-and-claim-format
+
+	if len(issuer) > 0 {
+		headers.Protected[HeaderLabelIssuer] = issuer
+	}
+	if len(feed) > 0 {
+		headers.Protected[HeaderLabelFeed] = feed
 	}
 
 	result, err = cose.Sign1(saltReader, signer, headers, payloadBlob, nil)
