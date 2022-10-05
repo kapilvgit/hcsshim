@@ -116,26 +116,29 @@ func (h *Host) SetConfidentialUVMOptions(ctx context.Context, r *guestresource.L
 	h.securityPolicyEnforcerSet = true
 	h.uvmReferenceInfo = r.EncodedUVMReference
 
-	if r.PodStartupFragment != "" {
-		fragmentData, err := os.ReadFile(r.PodStartupFragment)
-		if err != nil {
-			return err
-		}
+	// TBC this is a bad idea, it makes a link between the contents of this fragment (ie the pause container stuff) and
+	// external container versions (ie the actual pause container) so that when the pause container changes we have to
+	// make a new UVM.
+	/*
+		if r.PodStartupFragment != "" {
+			fragmentData, err := os.ReadFile(r.PodStartupFragment)
+			if err != nil {
+				return err
+			}
 
-		encodedFragment := base64.StdEncoding.EncodeToString(fragmentData)
-		// TODO (maksiman): Replace with internal fragment injection calls, when they're implemented
-		if err := h.InjectFragment(ctx, &guestresource.LCOWSecurityPolicyFragment{Fragment: encodedFragment}); err != nil {
-			return err
+			encodedFragment := base64.StdEncoding.EncodeToString(fragmentData)
+			// TODO (maksiman): Replace with internal fragment injection calls, when they're implemented
+			if err := h.InjectFragment(ctx, &guestresource.LCOWSecurityPolicyFragment{Fragment: encodedFragment}); err != nil {
+				return err
+			}
 		}
-	}
+	*/
 
 	return nil
 }
 
 // InjectFragment extends current security policy with additional constraints
 // from the incoming fragment.
-//
-// TODO (maksiman): add fragment validation and injection logic
 func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
 	log.G(ctx).WithField("fragment", fmt.Sprintf("%+v", fragment)).Debug("GCS Host.InjectFragment")
 
@@ -153,19 +156,45 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 		return fmt.Errorf("InjectFragment failed COSE validation: %s", err.Error())
 	} else {
 		log.G(ctx).Printf("iss:\n%s\n", result["iss"])
-		log.G(ctx).Printf("cty:\n%s\n", result["cty"])
-		log.G(ctx).Printf("pubkey:\n%s\n", result["pubkey"])
+		log.G(ctx).Printf("feed: %s", result["feed"])
+		log.G(ctx).Printf("cty: %s", result["cty"])
+		log.G(ctx).Printf("pubkey: %s", result["pubkey"])
+		log.G(ctx).Printf("pubcert: %s", result["pubcert"])
 		//log.G(ctx).Printf("payload:\n%s\n", result["payload"])
 
 		// now offer the payload fragment to the policy
 		var issuer = result["iss"]
-        var feed = result["pubkey"]
-        var code = result["payload"]
+		var feed = result["feed"]
+		var pubkey = result["pubkey"]
+		var pubcert = result["pubcert"]
+		var payload = result["payload"]
 
-        err = h.securityPolicyEnforcer.LoadFragment(issuer, feed, code)
+		codeBin, err := base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			log.G(ctx).Printf("failed to decode payload as base64: %s", payload)
+			return err
+		}
+		var code = string(codeBin[:])
+
+		// today we will use the public cert in place of the issuer (which ought to be a DID
+		// we can use to check the cert chain that signed this fragment was allowed by the user)
+		// If we were to allow the raw leaf cert like this we would need a framework change to
+		// take the cert in place of DID verification here so then it would be
+		//
+		// err = h.securityPolicyEnforcer.LoadFragment(pubcert, issuer, feed, code)
+		//
+		// There is a debate as to whether we should ignore the issuer in that case, probably not.
+
+		_ = pubkey
+		_ = issuer
+
+		err = h.securityPolicyEnforcer.LoadFragment(pubcert, feed, code)
 		if err != nil {
 			return fmt.Errorf("InjectFragment failed policy load: %s", err.Error())
+		} else {	
+			log.G(ctx).Printf("succeeded passing fragment into the enforcer.")
 		}
+
 	}
 	return nil
 }
