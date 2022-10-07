@@ -25,7 +25,7 @@ func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, require
 		log.Print("checkCoseSign1 did not pass, result map is empty.")
 	} else {
 		log.Print("checkCoseSign1 passed:")
-		if verbose == true {
+		if verbose {
 			log.Printf("iss:\n%s\n", results["iss"])
 			log.Printf("feed:\n%s\n", results["feed"])
 			log.Printf("pubkey:\n%s\n", results["pubkey"])
