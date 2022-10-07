@@ -3,21 +3,30 @@ package cosesign1
 import (
 	_ "embed"
 	"testing"
-	"testing/quick"
 
 	"github.com/veraison/go-cose"
 )
 
-//go:embed fragment.rego
+/*
+	The inputs here are generated via the Makefile,
+	thus if you update the fragment's rego (infra.rego)
+	then you can build a matching code file etc by
+	make infra.rego.cose
+*/
+
+//go:embed infra.rego.base64
 var FragmentRego string
 
-//go:embed ec384-test.cose
+//go:embed infra.rego.cose
 var FragmentCose []byte
+
+//go:embed infra.rego.cose
+var FragmentCose2 []byte
 
 // This is a self signed key which is only used for testing, it is not a risk.
 // It enables a check against the key and signature blobs
 
-//go:embed ec384-key.pem
+//go:embed ec384-private.body
 var KeyStrippedPem string // Strip off the BEGIN/END so we don't trigger credential checks
 
 var begingPrivateKey = "-----BEGIN PRIVATE KEY-----\n"
@@ -28,64 +37,77 @@ var KeyPem = begingPrivateKey + KeyStrippedPem + endPrivateKey
 //go:embed ec384-cert.crt
 var PubCertPem string // the whole cert chain to embed
 
-//go:embed ec384-leaf.crt
+//go:embed leafcert.ec384-public.pem
 var LeafCertPem string // the expected leaf cert
 
-// Validate that our conversion from the external SecurityPolicy representation
-// to our internal format is done correctly.
+//go:embed leafkey.ec384-public.pem
+var LeafKeyPem string
+
+/*
+	Decode a COSE_Sign1 document and check that we get the expected payload, issuer, keys, certs etc.
+*/
+
 func Test_UnpackAndValidateCannedFragment(t *testing.T) {
-	f := func() bool {
-		var resultsMap, err = UnpackAndValidateCOSE1CertChain(FragmentCose, nil, false, false)
-		if err != nil {
-			return false
-		}
-		var iss = resultsMap["iss"]
-		var cty = resultsMap["cty"]
-		var payload = resultsMap["payload"]
-		_ = resultsMap["pubkey"]
+	var resultsMap, err = UnpackAndValidateCOSE1CertChain(FragmentCose, nil, false, false)
 
-		// iss does NOT contain -----BEGIN/END CERTIFICATE-----	or a trailing \n
-		// so allow for the \n difference to make authoring the test data easier.
-
-		if iss != LeafCertPem && (iss+"\n") != LeafCertPem {
-			return false
-		}
-		if cty != "application/unknown+json" {
-			return false
-		}
-		if payload != FragmentRego {
-			return false
-		}
-		return true
+	if err != nil {
+		t.Errorf("UnpackAndValidateCOSE1CertChain failed: %s", err.Error())
 	}
+	var iss = resultsMap["iss"]
+	var feed = resultsMap["feed"]
+	var cty = resultsMap["cty"]
+	var payload = resultsMap["payload"]
+	var pubkey = resultsMap["pubkey"]
+	var pubcert = resultsMap["pubcert"]
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 1000}); err != nil {
-		t.Errorf("Test_UnpackAndValidateCannedFragment failed: %v", err)
+	if pubkey != LeafKeyPem && (pubkey+"\n") != LeafKeyPem {
+		t.Error("pubkey did not match")
+	}
+	if pubcert != LeafCertPem && (pubcert+"\n") != LeafCertPem {
+		t.Error("pubcert did not match")
+	}
+	if cty != "application/unknown+json" {
+		t.Error("cty did not match")
+	}
+	if payload != FragmentRego {
+		t.Error("payload did not match")
+	}
+	if iss != "TestIssuer" {
+		t.Error("iss did not match")
+	}
+	if feed != "TestFeed" {
+		t.Error("feed did not match")
 	}
 }
 
+func Test_UnpackAndValidateCannedFragmentCorrupted(t *testing.T) {
+	var offset = len(FragmentCose2) / 2
+	FragmentCose2[offset] = FragmentCose[offset] + 1 // corrupt the cose document (use the uncorrupted one as source in case we loop back to a good value)
+	var _, err = UnpackAndValidateCOSE1CertChain(FragmentCose2, nil, false, false)
+
+	// expect it to fail
+	if err == nil {
+		t.Error("corrupted document passed validation")
+	}
+}
+
+/*
+	Use CreateCoseSign1 to make a document that should match the one made by the makefile
+*/
+
 func Test_CreateCoseSign1Fragment(t *testing.T) {
-	f := func() bool {
-
-		var raw, err = CreateCoseSign1([]byte(FragmentRego), "application/unknown+json", []byte(PubCertPem), []byte(KeyPem), "zero", cose.AlgorithmES384, false)
-		if err != nil {
-			return false
-		}
-
-		if len(raw) != len(FragmentCose) {
-			return false
-		}
-
-		for which := range raw {
-			if raw[which] != FragmentCose[which] {
-				return false
-			}
-		}
-
-		return true
+	var raw, err = CreateCoseSign1([]byte(FragmentRego), "TestIssuer", "TestFeed", "application/unknown+json", []byte(PubCertPem), []byte(KeyPem), "zero", cose.AlgorithmES384, false)
+	if err != nil {
+		t.Errorf("CreateCoseSign1 failed: %s", err.Error())
 	}
 
-	if err := quick.Check(f, &quick.Config{MaxCount: 1000}); err != nil {
-		t.Errorf("Test_UnpackAndValidateCannedFragment failed: %v", err)
+	if len(raw) != len(FragmentCose) {
+		t.Error("created fragment length does not match expected")
+	}
+
+	for which := range raw {
+		if raw[which] != FragmentCose[which] {
+			t.Errorf("created fragment byte offset %d does not match expected", which)
+		}
 	}
 }

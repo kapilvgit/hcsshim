@@ -71,7 +71,7 @@ func main() {
 	createCmd.StringVar(&chainFilename, "cert", "pubcert.pem", "key or cert file to use (pem)")
 	createCmd.StringVar(&keyFilename, "key", "key.pem", "key to sign with (private key of the leaf of the chain)")
 	createCmd.StringVar(&outputFilename, "out", "out.cose", "output file")
-	createCmd.StringVar(&saltType, "salt", "zero", "rand or zero")
+	createCmd.StringVar(&saltType, "salt", "rand", "rand or zero")
 	createCmd.StringVar(&algo, "algo", "PS384", "PS256, PS384 etc")
 	createCmd.StringVar(&issuer, "issuer", "", "the party making the claims") // see https://ietf-scitt.github.io/draft-birkholz-scitt-architecture/draft-birkholz-scitt-architecture.html#name-terminology
 	createCmd.StringVar(&feed, "feed", "", "identifier for an artifact within the scope of an issuer")
