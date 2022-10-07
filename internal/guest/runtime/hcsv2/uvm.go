@@ -191,7 +191,7 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 		err = h.securityPolicyEnforcer.LoadFragment(pubcert, feed, code)
 		if err != nil {
 			return fmt.Errorf("InjectFragment failed policy load: %s", err.Error())
-		} else {	
+		} else {
 			log.G(ctx).Printf("succeeded passing fragment into the enforcer.")
 		}
 
@@ -387,10 +387,19 @@ func (h *Host) CreateContainer(ctx context.Context, id string, settings *prot.VM
 	// completes to bypass it; the security policy variable cannot be included
 	// in the security policy as its value is not available security policy
 	// construction time.
-	if oci.ParseAnnotationsBool(ctx, settings.OCISpecification.Annotations, annotations.UVMSecurityPolicyEnv, false) {
-		secPolicyEnv := fmt.Sprintf("UVM_SECURITY_POLICY=%s", h.securityPolicyEnforcer.EncodedSecurityPolicy())
-		uvmReferenceInfo := fmt.Sprintf("UVM_REFERENCE_INFO=%s", h.uvmReferenceInfo)
-		settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, secPolicyEnv, uvmReferenceInfo)
+
+	// It may be an error to have a security policy but not expose it to the container as
+	// in that case it can never be checked as correct by a verifier.
+	if oci.ParseAnnotationsBool(ctx, settings.OCISpecification.Annotations, annotations.UVMSecurityPolicyEnv, true) {
+		var encodedPolicy = h.securityPolicyEnforcer.EncodedSecurityPolicy()
+		if len(encodedPolicy) > 0 {
+			secPolicyEnv := fmt.Sprintf("UVM_SECURITY_POLICY=%s", encodedPolicy)
+			settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, secPolicyEnv)
+		}
+		if len(h.uvmReferenceInfo) > 0 {
+			uvmReferenceInfo := fmt.Sprintf("UVM_REFERENCE_INFO=%s", h.uvmReferenceInfo)
+			settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, uvmReferenceInfo)
+		}
 	}
 
 	// Create the BundlePath
