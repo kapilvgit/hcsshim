@@ -25,10 +25,14 @@ func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, require
 		log.Print("checkCoseSign1 did not pass, result map is empty.")
 	} else {
 		log.Print("checkCoseSign1 passed:")
-		log.Printf("iss:\n%s\n", results["iss"])
-		log.Printf("pubkey:\n%s\n", results["pubkey"])
-		log.Printf("content type:\n%s\n", results["cty"])
-		log.Printf("payload:\n%s\n", results["payload"])
+		if verbose == true {
+			log.Printf("iss:\n%s\n", results["iss"])
+			log.Printf("feed:\n%s\n", results["feed"])
+			log.Printf("pubkey:\n%s\n", results["pubkey"])
+			log.Printf("pubcert:\n%s\n", results["pubcert"])
+			log.Printf("content type:\n%s\n", results["cty"])
+			log.Printf("payload:\n%s\n", results["payload"])
+		}
 	}
 	return results, err
 }
@@ -148,7 +152,7 @@ func main() {
 					if err != nil {
 						log.Printf("writing the leaf pub key to %s failed: %s", outputKeyFilename, err.Error())
 					} else {
-						err = cosesign1.WriteString(outputCertFilename, results["iss"])
+						err = cosesign1.WriteString(outputCertFilename, results["pubcert"])
 						if err != nil {
 							log.Printf("writing the leaf cert to %s failed: %s", outputCertFilename, err.Error())
 						}
