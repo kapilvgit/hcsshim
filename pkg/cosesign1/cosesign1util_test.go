@@ -48,17 +48,19 @@ var LeafKeyPem string
 */
 
 func Test_UnpackAndValidateCannedFragment(t *testing.T) {
-	var resultsMap, err = UnpackAndValidateCOSE1CertChain(FragmentCose, nil, false, false)
+	var unpacked UnpackedCoseSign1
+	unpacked, err := UnpackAndValidateCOSE1CertChain(FragmentCose, nil, false, false)
 
 	if err != nil {
 		t.Errorf("UnpackAndValidateCOSE1CertChain failed: %s", err.Error())
 	}
-	var iss = resultsMap["iss"]
-	var feed = resultsMap["feed"]
-	var cty = resultsMap["cty"]
-	var payload = resultsMap["payload"]
-	var pubkey = resultsMap["pubkey"]
-	var pubcert = resultsMap["pubcert"]
+	
+	var iss = unpacked.Issuer
+	var feed = unpacked.Feed
+	var pubkey = unpacked.Pubkey
+	var pubcert = unpacked.Pubcert
+	var payload = string(unpacked.Payload[:])
+	var cty = unpacked.ContentType
 
 	if pubkey != LeafKeyPem && (pubkey+"\n") != LeafKeyPem {
 		t.Error("pubkey did not match")

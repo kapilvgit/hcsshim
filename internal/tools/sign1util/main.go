@@ -10,31 +10,30 @@ import (
 	"github.com/veraison/go-cose"
 )
 
-func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, requireKnownAuthority bool, verbose bool) (map[string]string, error) {
+func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, requireKnownAuthority bool, verbose bool) (cosesign1.UnpackedCoseSign1, error) {
 	coseBlob := cosesign1.ReadBlob(inputFilename)
 	var optionalPubKeyPEM []byte
 	if optionalPubKeyFilename != "" {
 		optionalPubKeyPEM = cosesign1.ReadBlob(optionalPubKeyFilename)
 	}
-	var results map[string]string
+
+	var unpacked cosesign1.UnpackedCoseSign1
 	var err error
-	results, err = cosesign1.UnpackAndValidateCOSE1CertChain(coseBlob, optionalPubKeyPEM, requireKnownAuthority, verbose)
+	unpacked, err = cosesign1.UnpackAndValidateCOSE1CertChain(coseBlob, optionalPubKeyPEM, requireKnownAuthority, verbose)
 	if err != nil {
 		log.Print("checkCoseSign1 failed - " + err.Error())
-	} else if len(results) == 0 {
-		log.Print("checkCoseSign1 did not pass, result map is empty.")
 	} else {
 		log.Print("checkCoseSign1 passed:")
 		if verbose {
-			log.Printf("iss:\n%s\n", results["iss"])
-			log.Printf("feed:\n%s\n", results["feed"])
-			log.Printf("pubkey:\n%s\n", results["pubkey"])
-			log.Printf("pubcert:\n%s\n", results["pubcert"])
-			log.Printf("content type:\n%s\n", results["cty"])
-			log.Printf("payload:\n%s\n", results["payload"])
+			log.Printf("iss:\n%s\n", unpacked.Issuer) // eg the DID:x509:blah....
+			log.Printf("feed: %s", unpacked.Feed)
+			log.Printf("cty: %s", unpacked.ContentType)
+			log.Printf("pubkey: %s", unpacked.Pubkey)
+			log.Printf("pubcert: %s", unpacked.Pubcert)
+			log.Printf("payload:\n%s\n", string(unpacked.Payload[:]))
 		}
 	}
-	return results, err
+	return unpacked, err
 }
 
 func createCoseSign1(payloadFilename string, issuer string, feed string, contentType string, chainFilename string, keyFilename string, saltType string, algo cose.Algorithm, verbose bool) ([]byte, error) {
@@ -146,13 +145,13 @@ func main() {
 		case "leaf":
 			err := leafCmd.Parse(os.Args[2:])
 			if err == nil {
-				results, err := checkCoseSign1(inputFilename, "", false, verbose)
+				unpacked, err := checkCoseSign1(inputFilename, "", false, verbose)
 				if err == nil {
-					err = cosesign1.WriteString(outputKeyFilename, results["pubkey"])
+					err = cosesign1.WriteString(outputKeyFilename, unpacked.Pubkey)
 					if err != nil {
 						log.Printf("writing the leaf pub key to %s failed: %s", outputKeyFilename, err.Error())
 					} else {
-						err = cosesign1.WriteString(outputCertFilename, results["pubcert"])
+						err = cosesign1.WriteString(outputCertFilename, unpacked.Pubcert)
 						if err != nil {
 							log.Printf("writing the leaf cert to %s failed: %s", outputCertFilename, err.Error())
 						}

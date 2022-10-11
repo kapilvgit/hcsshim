@@ -10,6 +10,16 @@ import (
 	"github.com/veraison/go-cose"
 )
 
+type UnpackedCoseSign1 struct {
+	Issuer      string
+	Feed        string
+	ContentType string
+	Pubkey      string
+	Pubcert     string
+	Payload     []byte
+	CertChain   []*x509.Certificate
+}
+
 /*
 	Create a pem of the form:
 
@@ -20,11 +30,11 @@ single line base64 standard encoded raw DER certificate
 	Note that there are no extra line breaks added and that a string compare will need to accomodate that.
 */
 
-func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool) (map[string]string, error) {
+func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool) (UnpackedCoseSign1, error) {
 	var msg cose.Sign1Message
 	err := msg.UnmarshalCBOR(raw)
 	if err != nil {
-		return nil, err
+		return UnpackedCoseSign1{}, err
 	}
 
 	protected := msg.Headers.Protected
@@ -36,7 +46,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 
 	x5RawChain, x5RawChainPresent := protected[cose.HeaderLabelX5Chain] // The spec says this is ordered - leaf, intermediates, root. X5Bag is unordered and woould need sorting
 	if !x5RawChainPresent {
-		return nil, fmt.Errorf("x5Chain missing")
+		return UnpackedCoseSign1{}, fmt.Errorf("x5Chain missing")
 	}
 
 	var issuer string
@@ -71,7 +81,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 			if verbose {
 				log.Print("Parse certificate failed: " + err.Error())
 			}
-			return nil, err
+			return UnpackedCoseSign1{}, err
 		}
 		if verbose {
 			desc := fmt.Sprintf("chain %d", which)
@@ -84,7 +94,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 
 	// A reasonable chain will have 2-5 elements
 	if chainLen > 100 || chainLen < 1 {
-		return nil, fmt.Errorf("unreasonable number of certs (%d) in COSE_Sign1 document", chainLen)
+		return UnpackedCoseSign1{}, fmt.Errorf("unreasonable number of certs (%d) in COSE_Sign1 document", chainLen)
 	}
 
 	// We need to split the certs into root, leaf and intermediate to use x509.Certificate.Verify(opts) below
@@ -123,13 +133,14 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 	var leafPubKey = leafCert.PublicKey
 	var leafPubKeyPem = keyToPEM(leafPubKey)
 
-	var results = map[string]string{
-		"pubcert": leafPem,
-		"feed":    feed,
-		"iss":     issuer,
-		"pubkey":  leafPubKeyPem,
-		"cty":     msg.Headers.Protected[cose.HeaderLabelContentType].(string),
-		"payload": string(msg.Payload),
+	var results = UnpackedCoseSign1{
+		Pubcert:     leafPem,
+		Feed:        feed,
+		Issuer:      issuer,
+		Pubkey:      leafPubKeyPem,
+		ContentType: msg.Headers.Protected[cose.HeaderLabelContentType].(string),
+		Payload:     msg.Payload,
+		CertChain:   x5Array,
 	}
 
 	if err != nil {

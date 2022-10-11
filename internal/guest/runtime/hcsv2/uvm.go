@@ -6,6 +6,7 @@ package hcsv2
 import (
 	"bufio"
 	"context"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -137,6 +138,19 @@ func (h *Host) SetConfidentialUVMOptions(ctx context.Context, r *guestresource.L
 	return nil
 }
 
+type JsonPayload struct {
+	Issuer   string `json:"issuer,omitempty"`
+	Feed     string `json:"feed,omitempty"`
+	Fragment string `json:"fragment,omitempty"`
+}
+
+func checkDIDvsChain(did string, chain []*x509.Certificate) bool {
+	_ = did
+	_ = chain
+	// TODO - call the resolver
+	return true
+}
+
 // InjectFragment extends current security policy with additional constraints
 // from the incoming fragment.
 func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWSecurityPolicyFragment) (err error) {
@@ -149,29 +163,52 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 	blob := []byte(fragment.Fragment)
 	_ = os.WriteFile("/tmp/fragment.blob", blob, 0644)
 
-	var result map[string]string
-	result, err = cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil, false, true) // params raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool
+	var unpacked cosesign1.UnpackedCoseSign1
+	unpacked, err = cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil, false, true) // params raw []byte, optionaPubKeyPEM []byte, requireKNownAuthority bool, verbose bool
+
+	// Since EPRS cannot cope with iss/feed today (maybe next week) we MAY have a json payload with issuer and feed tags OR have them in the header
 
 	if err != nil {
 		return fmt.Errorf("InjectFragment failed COSE validation: %s", err.Error())
 	} else {
-		log.G(ctx).Printf("iss:\n%s\n", result["iss"])
-		log.G(ctx).Printf("feed: %s", result["feed"])
-		log.G(ctx).Printf("cty: %s", result["cty"])
-		log.G(ctx).Printf("pubkey: %s", result["pubkey"])
-		log.G(ctx).Printf("pubcert: %s", result["pubcert"])
-		//log.G(ctx).Printf("payload:\n%s\n", result["payload"])
+		var payloadString = string(unpacked.Payload[:])
+		var issuer = unpacked.Issuer
+		var feed = unpacked.Feed
+		var pubkey = unpacked.Pubkey
+		var pubcert = unpacked.Pubcert
+		var payload = unpacked.Payload
 
-		// now offer the payload fragment to the policy
-		var issuer = result["iss"]
-		var feed = result["feed"]
-		var pubkey = result["pubkey"]
-		var pubcert = result["pubcert"]
-		var payload = result["payload"]
+		log.G(ctx).Printf("iss:\n%s\n", issuer) // eg the DID:x509:blah....
+		log.G(ctx).Printf("feed: %s", feed)
+		log.G(ctx).Printf("cty: %s", unpacked.ContentType)
+		log.G(ctx).Printf("pubkey: %s", pubkey)
+		log.G(ctx).Printf("pubcert: %s", pubcert)
+		log.G(ctx).Printf("payload:\n%s\n", payloadString)
 
-		codeBin, err := base64.StdEncoding.DecodeString(payload)
+		// If the issuer and feed were not present in the COSE_Sign1 protected header assume the
+		// payload is a json document wrapping them along with the rego fragment.
+
+		if len(issuer) == 0 && len(feed) == 0 { // assume payload is json, unwrap that
+			var jsonPayload JsonPayload
+			var err = json.Unmarshal(payload, &jsonPayload)
+			if err != nil {
+				return fmt.Errorf("failed to decode json fragment wrapper: " + err.Error())
+			}
+			issuer = jsonPayload.Issuer
+			feed = jsonPayload.Feed
+			payloadString = jsonPayload.Fragment
+		} else if len(issuer) == 0 || len(feed) == 0 { // must both be present or neither present
+			return fmt.Errorf("issuer and feed must both be specified or neither specified in the COSE_Sign1 protected header")
+		}
+
+		var didMatchesChain = checkDIDvsChain(issuer, unpacked.CertChain)
+		if didMatchesChain == false {
+			return fmt.Errorf("InjectFragment failed chain did not match issuer DID %s", issuer)
+		}
+
+		codeBin, err := base64.StdEncoding.DecodeString(payloadString)
 		if err != nil {
-			log.G(ctx).Printf("failed to decode payload as base64: %s", payload)
+			log.G(ctx).Printf("failed to decode payload as base64: %s", payloadString)
 			return err
 		}
 		var code = string(codeBin[:])
@@ -186,9 +223,9 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 		// There is a debate as to whether we should ignore the issuer in that case, probably not.
 
 		_ = pubkey
-		_ = issuer
 
-		err = h.securityPolicyEnforcer.LoadFragment(pubcert, feed, code)
+		// now offer the payload fragment to the policy
+		err = h.securityPolicyEnforcer.LoadFragment(issuer, feed, code)
 		if err != nil {
 			return fmt.Errorf("InjectFragment failed policy load: %s", err.Error())
 		} else {
