@@ -129,15 +129,15 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionaPubKeyPEM []byte, requir
 
 	_, err = leafCert.Verify(opts)
 
-	var leafPem = x509ToPEM(leafCert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
+	var leafCertBase64 = x509ToBase64(leafCert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
 	var leafPubKey = leafCert.PublicKey
-	var leafPubKeyPem = keyToPEM(leafPubKey)
+	var leafPubKeyBase64 = keyToBase64(leafPubKey)
 
 	var results = UnpackedCoseSign1{
-		Pubcert:     leafPem,
+		Pubcert:     leafCertBase64,
 		Feed:        feed,
 		Issuer:      issuer,
-		Pubkey:      leafPubKeyPem,
+		Pubkey:      leafPubKeyBase64,
 		ContentType: msg.Headers.Protected[cose.HeaderLabelContentType].(string),
 		Payload:     msg.Payload,
 		CertChain:   x5Array,

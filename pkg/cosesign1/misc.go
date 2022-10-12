@@ -58,6 +58,23 @@ func WriteString(path string, str string) error {
 	return WriteBlob(path, data)
 }
 
+func x509ToBase64(cert *x509.Certificate) string {
+	base64Cert := base64.StdEncoding.EncodeToString(cert.Raw)
+
+	return base64Cert
+}
+
+func keyToBase64(key any) string {
+
+	derKey, err := x509.MarshalPKIXPublicKey(key)
+	if err != nil {
+		return ""
+	}
+	base64Key := base64.StdEncoding.EncodeToString(derKey)
+
+	return base64Key
+}
+
 /*
 	Create a pem of the form:
 
@@ -69,7 +86,12 @@ single line base64 standard encoded raw DER certificate
 */
 
 func x509ToPEM(cert *x509.Certificate) string {
-	base64Cert := base64.StdEncoding.EncodeToString(cert.Raw)
+	
+	base64Cert := x509ToBase64(cert)
+	return base64CertToPEM(base64Cert)
+}
+
+func base64CertToPEM(base64Cert string) string {
 
 	var begin = "-----BEGIN CERTIFICATE-----\n"
 	var end = "\n-----END CERTIFICATE-----"
@@ -81,16 +103,16 @@ func x509ToPEM(cert *x509.Certificate) string {
 
 func keyToPEM(key any) string {
 
-	derKey, err := x509.MarshalPKIXPublicKey(key)
-	if err != nil {
-		return ""
-	}
-	base64Cert := base64.StdEncoding.EncodeToString(derKey)
+	base64Key := keyToBase64(key)
+	return base64PublicKeyToPEM(base64Key)
+}
+
+func base64PublicKeyToPEM(base64Key string) string {
 
 	var begin = "-----BEGIN PUBLIC KEY-----\n"
 	var end = "\n-----END PUBLIC KEY-----"
 
-	pemData := begin + base64Cert + end
+	pemData := begin + base64Key + end
 
 	return pemData
 }

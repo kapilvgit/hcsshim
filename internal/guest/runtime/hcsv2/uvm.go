@@ -6,7 +6,6 @@ package hcsv2
 import (
 	"bufio"
 	"context"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -144,11 +143,13 @@ type JsonPayload struct {
 	Fragment string `json:"fragment,omitempty"`
 }
 
-func checkDIDvsChain(did string, chain []*x509.Certificate) bool {
-	_ = did
-	_ = chain
+func checkDIDvsChain(did string, unpacked cosesign1.UnpackedCoseSign1) (bool, error) {
+	// Ken's cheap resolver, does the issuer match the leaf key base64?
+	if did != unpacked.Pubkey {
+		return false, fmt.Errorf("InjectFragment failed chain (leaf key) %s did not match issuer DID %s", unpacked.Pubkey, did)
+	}
 	// TODO - call the resolver
-	return true
+	return true, nil
 }
 
 // InjectFragment extends current security policy with additional constraints
@@ -178,12 +179,12 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 		var pubcert = unpacked.Pubcert
 		var payload = unpacked.Payload
 
-		log.G(ctx).Printf("iss:\n%s\n", issuer) // eg the DID:x509:blah....
-		log.G(ctx).Printf("feed: %s", feed)
-		log.G(ctx).Printf("cty: %s", unpacked.ContentType)
-		log.G(ctx).Printf("pubkey: %s", pubkey)
-		log.G(ctx).Printf("pubcert: %s", pubcert)
-		log.G(ctx).Printf("payload:\n%s\n", payloadString)
+		log.G(ctx).Tracef("issuer:%s", issuer) // eg the DID:x509:blah....
+		log.G(ctx).Tracef("feed: %s", feed)
+		log.G(ctx).Tracef("cty: %s", unpacked.ContentType)
+		log.G(ctx).Tracef("pubkey: %s", pubkey)
+		log.G(ctx).Tracef("pubcert: %s", pubcert)
+		log.G(ctx).Tracef("payload:\n%s\n", payloadString)
 
 		// If the issuer and feed were not present in the COSE_Sign1 protected header assume the
 		// payload is a json document wrapping them along with the rego fragment.
@@ -198,12 +199,12 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 			feed = jsonPayload.Feed
 			payloadString = jsonPayload.Fragment
 		} else if len(issuer) == 0 || len(feed) == 0 { // must both be present or neither present
-			return fmt.Errorf("issuer and feed must both be specified or neither specified in the COSE_Sign1 protected header")
+			return fmt.Errorf("either issuer and feed must both be provided or neither provided in the COSE_Sign1 protected header")
 		}
 
-		var didMatchesChain = checkDIDvsChain(issuer, unpacked.CertChain)
-		if didMatchesChain == false {
-			return fmt.Errorf("InjectFragment failed chain did not match issuer DID %s", issuer)
+		var didMatchesChain, err = checkDIDvsChain(issuer, unpacked)
+		if !didMatchesChain {
+			return err
 		}
 
 		codeBin, err := base64.StdEncoding.DecodeString(payloadString)

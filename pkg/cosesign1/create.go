@@ -105,6 +105,7 @@ func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType
 	}
 
 	// see https://ietf-scitt.github.io/draft-birkholz-scitt-architecture/draft-birkholz-scitt-architecture.html#name-envelope-and-claim-format
+	// PRSS will be using string keys for these soon. Meanwhile I'll wrap it all in a json document
 
 	if len(issuer) > 0 {
 		headers.Protected[HeaderLabelIssuer] = issuer

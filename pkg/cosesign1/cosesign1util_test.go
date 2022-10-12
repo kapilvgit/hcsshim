@@ -57,8 +57,8 @@ func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 	
 	var iss = unpacked.Issuer
 	var feed = unpacked.Feed
-	var pubkey = unpacked.Pubkey
-	var pubcert = unpacked.Pubcert
+	var pubkey = base64PublicKeyToPEM(unpacked.Pubkey)
+	var pubcert = base64CertToPEM(unpacked.Pubcert)
 	var payload = string(unpacked.Payload[:])
 	var cty = unpacked.ContentType
 
