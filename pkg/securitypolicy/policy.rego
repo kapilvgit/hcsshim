@@ -1,6 +1,6 @@
 package policy
 
-api_svn := "0.7.0"
+api_svn := "0.9.0"
 
 import future.keywords.every
 import future.keywords.in
@@ -20,4 +20,5 @@ plan9_mount := data.framework.plan9_mount
 plan9_unmount := data.framework.plan9_unmount
 get_properties := data.framework.get_properties
 dump_stacks := data.framework.dump_stacks
+container_logging := data.framework.container_logging
 reason := {"errors": data.framework.errors}

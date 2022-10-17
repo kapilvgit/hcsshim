@@ -505,6 +505,13 @@ func (h *Host) SignalContainerProcess(ctx context.Context, containerID string, p
 func (h *Host) ExecProcess(ctx context.Context, containerID string, params prot.ProcessParameters, conSettings stdio.ConnectionSettings) (_ int, err error) {
 	var pid int
 	var c *Container
+
+	if err = h.securityPolicyEnforcer.EnforceContainerLoggingPolicy(); err != nil {
+		// logging isn't allowed by policy, this turns off "container logging"
+		conSettings.StdOut = nil
+		conSettings.StdErr = nil
+	}
+
 	if params.IsExternal || containerID == UVMContainerID {
 		err = h.securityPolicyEnforcer.EnforceExecExternalProcessPolicy(
 			params.CommandArgs,

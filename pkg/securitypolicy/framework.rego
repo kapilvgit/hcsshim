@@ -354,6 +354,12 @@ dump_stacks := {"allowed": true} {
     data.policy.allow_dump_stacks
 }
 
+default container_logging := {"allowed": false}
+
+container_logging := {"allowed": true} {
+    data.policy.allow_container_logging
+}
+
 # error messages
 
 errors["deviceHash not found"] {
