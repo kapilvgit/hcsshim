@@ -20,5 +20,5 @@ plan9_mount := data.framework.plan9_mount
 plan9_unmount := data.framework.plan9_unmount
 get_properties := data.framework.get_properties
 dump_stacks := data.framework.dump_stacks
-container_logging := data.framework.container_logging
+process_logging := data.framework.process_logging
 reason := {"errors": data.framework.errors}

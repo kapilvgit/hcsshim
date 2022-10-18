@@ -911,11 +911,11 @@ func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses
 	}
 
 	return &generatedConstraints{
-		containers:            containers,
-		externalProcesses:     externalProcesses,
-		allowGetProperties:    randBool(r),
-		allowDumpStacks:       randBool(r),
-		allowContainerLogging: false,
+		containers:          containers,
+		externalProcesses:   externalProcesses,
+		allowGetProperties:  randBool(r),
+		allowDumpStacks:     randBool(r),
+		allowProcessLogging: false,
 	}
 }
 
@@ -1318,11 +1318,11 @@ func atMost(r *rand.Rand, most int32) int32 {
 }
 
 type generatedConstraints struct {
-	containers            []*securityPolicyContainer
-	externalProcesses     []*externalProcess
-	allowGetProperties    bool
-	allowDumpStacks       bool
-	allowContainerLogging bool
+	containers          []*securityPolicyContainer
+	externalProcesses   []*externalProcess
+	allowGetProperties  bool
+	allowDumpStacks     bool
+	allowProcessLogging bool
 }
 
 type containerInitProcess struct {

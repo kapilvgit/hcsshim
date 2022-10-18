@@ -13,7 +13,7 @@ import (
 	"syscall"
 )
 
-type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowContainerLogging bool) (string, error)
+type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowProcessLogging bool) (string, error)
 
 const (
 	jsonMarshaller = "json"
@@ -56,7 +56,7 @@ func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConf
 	return string(policyCode), nil
 }
 
-func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowContainerLogging bool) (string, error) {
+func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowProcessLogging bool) (string, error) {
 	if allowAll {
 		if len(containers) > 0 {
 			return "", ErrInvalidOpenDoorPolicy
@@ -83,12 +83,12 @@ func marshalRego(allowAll bool, containers []*Container, externalProcesses []Ext
 
 	policy.AllowPropertiesAccess = allowPropertiesAccess
 	policy.AllowDumpStacks = allowDumpStacks
-	policy.AllowContainerLogging = allowContainerLogging
+	policy.AllowProcessLogging = allowProcessLogging
 
 	return policy.marshalRego(), nil
 }
 
-func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowContainerLogging bool) (string, error) {
+func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowProcessLogging bool) (string, error) {
 	if marshaller == "" {
 		marshaller = defaultMarshaller
 	}
@@ -96,7 +96,7 @@ func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, ex
 	if marshal, ok := registeredMarshallers[marshaller]; !ok {
 		return "", fmt.Errorf("unknown marshaller: %q", marshaller)
 	} else {
-		return marshal(allowAll, containers, externalProcesses, allowPropertiesAccess, allowDumpStacks, allowContainerLogging)
+		return marshal(allowAll, containers, externalProcesses, allowPropertiesAccess, allowDumpStacks, allowProcessLogging)
 	}
 }
 
@@ -303,7 +303,7 @@ func (p securityPolicyInternal) marshalRego() string {
 	addExternalProcesses(builder, p.ExternalProcesses)
 	writeLine(builder, `allow_properties_access := %v`, p.AllowPropertiesAccess)
 	writeLine(builder, `allow_dump_stacks := %v`, p.AllowDumpStacks)
-	writeLine(builder, `allow_container_logging := %v`, p.AllowContainerLogging)
+	writeLine(builder, `allow_process_logging := %v`, p.AllowProcessLogging)
 	objects := builder.String()
 	return strings.Replace(policyRegoTemplate, "##OBJECTS##", objects, 1)
 }

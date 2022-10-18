@@ -354,10 +354,10 @@ dump_stacks := {"allowed": true} {
     data.policy.allow_dump_stacks
 }
 
-default container_logging := {"allowed": false}
+default process_logging := {"allowed": false}
 
-container_logging := {"allowed": true} {
-    data.policy.allow_container_logging
+process_logging := {"allowed": true} {
+    data.policy.allow_process_logging
 }
 
 # error messages

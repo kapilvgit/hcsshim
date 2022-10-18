@@ -15,4 +15,4 @@ plan9_mount := {"allowed": true}
 plan9_unmount := {"allowed": true}
 get_properties := {"allowed": true}
 dump_stacks := {"allowed": true}
-container_logging := {"allowed": true}
+process_logging := {"allowed": true}

@@ -1938,31 +1938,31 @@ func Test_Rego_DumpStacksPolicy_Off(t *testing.T) {
 	}
 }
 
-func Test_EnforceContainerLogging_Allowed(t *testing.T) {
+func Test_EnforceProcessLogging_Allowed(t *testing.T) {
 	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
-	gc.allowContainerLogging = true
+	gc.allowProcessLogging = true
 
 	tc, err := setupRegoPolicyOnlyTest(gc)
 	if err != nil {
 		t.Fatalf("unable to setup test: %v", err)
 	}
 
-	err = tc.policy.EnforceContainerLoggingPolicy()
+	err = tc.policy.EnforceProcessLoggingPolicy()
 	if err != nil {
 		t.Fatalf("Policy enforcement unexpectedly was denied: %v", err)
 	}
 }
 
-func Test_EnforceContainerLogging_Not_Allowed(t *testing.T) {
+func Test_EnforceProcessLogging_Not_Allowed(t *testing.T) {
 	gc := generateConstraints(testRand, maxContainersInGeneratedConstraints, maxExternalProcessesInGeneratedConstraints)
-	gc.allowContainerLogging = false
+	gc.allowProcessLogging = false
 
 	tc, err := setupRegoPolicyOnlyTest(gc)
 	if err != nil {
 		t.Fatalf("unable to setup test: %v", err)
 	}
 
-	err = tc.policy.EnforceContainerLoggingPolicy()
+	err = tc.policy.EnforceProcessLoggingPolicy()
 	if err == nil {
 		t.Fatalf("Policy enforcement unexpectedly was allowed")
 	}
@@ -1994,7 +1994,7 @@ func (constraints *generatedConstraints) toPolicy() *securityPolicyInternal {
 	securityPolicy.ExternalProcesses = constraints.externalProcesses
 	securityPolicy.AllowPropertiesAccess = constraints.allowGetProperties
 	securityPolicy.AllowDumpStacks = constraints.allowDumpStacks
-	securityPolicy.AllowContainerLogging = constraints.allowContainerLogging
+	securityPolicy.AllowProcessLogging = constraints.allowProcessLogging
 	return securityPolicy
 }
 
