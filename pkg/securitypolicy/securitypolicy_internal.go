@@ -12,7 +12,6 @@ type securityPolicyInternal struct {
 	ExternalProcesses     []*externalProcess
 	AllowPropertiesAccess bool
 	AllowDumpStacks       bool
-	AllowProcessLogging   bool
 }
 
 // Internal version of Container
@@ -38,18 +37,23 @@ type securityPolicyContainer struct {
 	// A list of signals that are allowed to be sent to the container's init
 	// process.
 	Signals []syscall.Signal
+	// Whether to allow the capture of init process standard out and standard error
+	AllowLogging bool
 }
 
 type containerExecProcess struct {
 	Command []string
 	// A list of signals that are allowed to be sent to this process
 	Signals []syscall.Signal
+	// Whether to allow the capture of standard out and standard error
+	AllowLogging bool
 }
 
 type externalProcess struct {
-	command    []string
-	envRules   []EnvRuleConfig
-	workingDir string
+	command      []string
+	envRules     []EnvRuleConfig
+	workingDir   string
+	allowLogging bool
 }
 
 // Internal version of Mount
@@ -98,6 +102,7 @@ func (c Container) toInternal() (securityPolicyContainer, error) {
 		AllowElevated: c.AllowElevated,
 		ExecProcesses: execProcesses,
 		Signals:       c.Signals,
+		AllowLogging:  c.AllowLogging,
 	}, nil
 }
 
@@ -163,7 +168,8 @@ func (p ExternalProcessConfig) toInternal() externalProcess {
 			Rule:     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 			Required: true,
 		}},
-		workingDir: p.WorkingDir,
+		workingDir:   p.WorkingDir,
+		allowLogging: p.AllowLogging,
 	}
 }
 

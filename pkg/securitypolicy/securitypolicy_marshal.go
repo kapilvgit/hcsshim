@@ -13,7 +13,7 @@ import (
 	"syscall"
 )
 
-type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowProcessLogging bool) (string, error)
+type marshalFunc func(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool) (string, error)
 
 const (
 	jsonMarshaller = "json"
@@ -56,7 +56,7 @@ func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConf
 	return string(policyCode), nil
 }
 
-func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowProcessLogging bool) (string, error) {
+func marshalRego(allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool) (string, error) {
 	if allowAll {
 		if len(containers) > 0 {
 			return "", ErrInvalidOpenDoorPolicy
@@ -83,12 +83,11 @@ func marshalRego(allowAll bool, containers []*Container, externalProcesses []Ext
 
 	policy.AllowPropertiesAccess = allowPropertiesAccess
 	policy.AllowDumpStacks = allowDumpStacks
-	policy.AllowProcessLogging = allowProcessLogging
 
 	return policy.marshalRego(), nil
 }
 
-func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool, allowProcessLogging bool) (string, error) {
+func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, externalProcesses []ExternalProcessConfig, allowPropertiesAccess bool, allowDumpStacks bool) (string, error) {
 	if marshaller == "" {
 		marshaller = defaultMarshaller
 	}
@@ -96,7 +95,7 @@ func MarshalPolicy(marshaller string, allowAll bool, containers []*Container, ex
 	if marshal, ok := registeredMarshallers[marshaller]; !ok {
 		return "", fmt.Errorf("unknown marshaller: %q", marshaller)
 	} else {
-		return marshal(allowAll, containers, externalProcesses, allowPropertiesAccess, allowDumpStacks, allowProcessLogging)
+		return marshal(allowAll, containers, externalProcesses, allowPropertiesAccess, allowDumpStacks)
 	}
 }
 
@@ -234,7 +233,7 @@ func (p containerExecProcess) marshalRego() string {
 	command := stringArray(p.Command).marshalRego()
 	signals := signalArray(p.Signals).marshalRego()
 
-	return fmt.Sprintf(`{"command": %s, "signals": %s}`, command, signals)
+	return fmt.Sprintf(`{"command": %s, "signals": %s, "allow_logging": %s}`, command, signals, p.AllowLogging)
 }
 
 func writeExecProcesses(builder *strings.Builder, execProcesses []containerExecProcess, indent string) {
@@ -260,6 +259,7 @@ func writeContainer(builder *strings.Builder, container *securityPolicyContainer
 	writeSignals(builder, container.Signals, indent+indentUsing)
 	writeLine(builder, `%s"allow_elevated": %v,`, indent+indentUsing, container.AllowElevated)
 	writeLine(builder, `%s"working_dir": "%s"`, indent+indentUsing, container.WorkingDir)
+	writeLine(builder, `%s"allow_logging": "%s"`, indent+indentUsing, container.AllowLogging)
 	writeLine(builder, "%s}%s", indent, end)
 }
 
@@ -280,7 +280,7 @@ func addContainers(builder *strings.Builder, containers []*securityPolicyContain
 func (p externalProcess) marshalRego() string {
 	command := stringArray(p.command).marshalRego()
 	envRules := envRuleArray(p.envRules).marshalRego()
-	return fmt.Sprintf(`{"command": %s, "env_rules": %s, "working_dir": "%s"}`, command, envRules, p.workingDir)
+	return fmt.Sprintf(`{"command": %s, "env_rules": %s, "working_dir": "%s", "allow_logging": %s}`, command, envRules, p.workingDir, p.allowLogging)
 }
 
 func addExternalProcesses(builder *strings.Builder, processes []*externalProcess) {
@@ -303,7 +303,6 @@ func (p securityPolicyInternal) marshalRego() string {
 	addExternalProcesses(builder, p.ExternalProcesses)
 	writeLine(builder, `allow_properties_access := %v`, p.AllowPropertiesAccess)
 	writeLine(builder, `allow_dump_stacks := %v`, p.AllowDumpStacks)
-	writeLine(builder, `allow_process_logging := %v`, p.AllowProcessLogging)
 	objects := builder.String()
 	return strings.Replace(policyRegoTemplate, "##OBJECTS##", objects, 1)
 }

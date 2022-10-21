@@ -30,13 +30,13 @@ type PolicyConfig struct {
 	ExternalProcesses     []ExternalProcessConfig `json:"external_processes" toml:"external_process"`
 	AllowPropertiesAccess bool                    `json:"allow_properties_access" toml:"allow_properties_access"`
 	AllowDumpStacks       bool                    `json:"allow_dump_stacks" toml:"allow_dump_stacks"`
-	AllowProcessLogging   bool                    `json:"allow_process_logging" toml:"allow_process_logging"`
 }
 
 // ExternalProcessConfig contains toml or JSON config for running external processes in the UVM.
 type ExternalProcessConfig struct {
-	Command    []string `json:"command" toml:"command"`
-	WorkingDir string   `json:"working_dir" toml:"working_dir"`
+	Command      []string `json:"command" toml:"command"`
+	WorkingDir   string   `json:"working_dir" toml:"working_dir"`
+	AllowLogging bool     `json:"allow_logging" toml:"allow_logging"`
 }
 
 // AuthConfig contains toml or JSON config for registry authentication.
@@ -65,6 +65,7 @@ type ContainerConfig struct {
 	AllowElevated bool                `json:"allow_elevated" toml:"allow_elevated"`
 	ExecProcesses []ExecProcessConfig `json:"exec_processes" toml:"exec_process"`
 	Signals       []syscall.Signal    `json:"signals" toml:"signals"`
+	AllowLogging  bool                `json:"allow_logging" toml:"allow_logging"`
 }
 
 // MountConfig contains toml or JSON config for mount security policy
@@ -78,8 +79,9 @@ type MountConfig struct {
 // ExecProcessConfig contains toml or JSON config for exec process security
 // policy constraint description
 type ExecProcessConfig struct {
-	Command []string         `json:"command" toml:"command"`
-	Signals []syscall.Signal `json:"signals" toml:"signals"`
+	Command      []string         `json:"command" toml:"command"`
+	Signals      []syscall.Signal `json:"signals" toml:"signals"`
+	AllowLogging bool             `json:"allow_logging" toml:"allow_logging"`
 }
 
 // NewEnvVarRules creates slice of EnvRuleConfig's from environment variables
@@ -158,6 +160,7 @@ type Container struct {
 	AllowElevated bool                `json:"allow_elevated"`
 	ExecProcesses []ExecProcessConfig `json:"-"`
 	Signals       []syscall.Signal    `json:"-"`
+	AllowLogging  bool                `json:"_"`
 }
 
 // StringArrayMap wraps an array of strings as a string map.
@@ -199,6 +202,7 @@ func CreateContainerPolicy(
 	allowElevated bool,
 	execProcesses []ExecProcessConfig,
 	signals []syscall.Signal,
+	allowLogging bool,
 ) (*Container, error) {
 	if err := validateEnvRules(envRules); err != nil {
 		return nil, err
@@ -215,6 +219,7 @@ func CreateContainerPolicy(
 		AllowElevated: allowElevated,
 		ExecProcesses: execProcesses,
 		Signals:       signals,
+		AllowLogging:  allowLogging,
 	}, nil
 }
 

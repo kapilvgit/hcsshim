@@ -911,11 +911,10 @@ func generateConstraints(r *rand.Rand, maxContainers int32, maxExternalProcesses
 	}
 
 	return &generatedConstraints{
-		containers:          containers,
-		externalProcesses:   externalProcesses,
-		allowGetProperties:  randBool(r),
-		allowDumpStacks:     randBool(r),
-		allowProcessLogging: false,
+		containers:         containers,
+		externalProcesses:  externalProcesses,
+		allowGetProperties: randBool(r),
+		allowDumpStacks:    randBool(r),
 	}
 }
 
@@ -932,22 +931,25 @@ func generateConstraintsContainer(r *rand.Rand, minNumberOfLayers, maxNumberOfLa
 	}
 	c.ExecProcesses = generateExecProcesses(r)
 	c.Signals = generateListOfSignals(r, 0, maxSignalNumber)
+	c.AllowLogging = randBool(r)
 
 	return &c
 }
 
 func generateContainerInitProcess(r *rand.Rand) containerInitProcess {
 	return containerInitProcess{
-		Command:    generateCommand(r),
-		EnvRules:   generateEnvironmentVariableRules(r),
-		WorkingDir: generateWorkingDir(r),
+		Command:      generateCommand(r),
+		EnvRules:     generateEnvironmentVariableRules(r),
+		WorkingDir:   generateWorkingDir(r),
+		AllowLogging: randBool(r),
 	}
 }
 
 func generateContainerExecProcess(r *rand.Rand) containerExecProcess {
 	return containerExecProcess{
-		Command: generateCommand(r),
-		Signals: generateListOfSignals(r, 0, maxSignalNumber),
+		Command:      generateCommand(r),
+		Signals:      generateListOfSignals(r, 0, maxSignalNumber),
+		AllowLogging: randBool(r),
 	}
 }
 
@@ -957,9 +959,10 @@ func generateRootHash(r *rand.Rand) string {
 
 func generateExternalProcess(r *rand.Rand) *externalProcess {
 	return &externalProcess{
-		command:    generateCommand(r),
-		envRules:   generateEnvironmentVariableRules(r),
-		workingDir: generateWorkingDir(r),
+		command:      generateCommand(r),
+		envRules:     generateEnvironmentVariableRules(r),
+		workingDir:   generateWorkingDir(r),
+		allowLogging: randBool(r),
 	}
 }
 
@@ -1318,15 +1321,15 @@ func atMost(r *rand.Rand, most int32) int32 {
 }
 
 type generatedConstraints struct {
-	containers          []*securityPolicyContainer
-	externalProcesses   []*externalProcess
-	allowGetProperties  bool
-	allowDumpStacks     bool
-	allowProcessLogging bool
+	containers         []*securityPolicyContainer
+	externalProcesses  []*externalProcess
+	allowGetProperties bool
+	allowDumpStacks    bool
 }
 
 type containerInitProcess struct {
-	Command    []string
-	EnvRules   []EnvRuleConfig
-	WorkingDir string
+	Command      []string
+	EnvRules     []EnvRuleConfig
+	WorkingDir   string
+	AllowLogging bool
 }
