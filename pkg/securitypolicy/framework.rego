@@ -357,7 +357,7 @@ dump_stacks := {"allowed": true} {
 default stdio_access := {"allowed": false}
 
 stdio_access := {"allowed": true} {
-    data.policy.allow_stdio_access
+    true
 }
 
 # error messages
