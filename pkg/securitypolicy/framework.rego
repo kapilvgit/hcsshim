@@ -354,10 +354,10 @@ dump_stacks := {"allowed": true} {
     data.policy.allow_dump_stacks
 }
 
-default process_logging := {"allowed": false}
+default stdio_access := {"allowed": false}
 
-process_logging := {"allowed": true} {
-    data.policy.allow_process_logging
+stdio_access := {"allowed": true} {
+    data.policy.allow_stdio_access
 }
 
 # error messages

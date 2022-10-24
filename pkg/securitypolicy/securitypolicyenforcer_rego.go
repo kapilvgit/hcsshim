@@ -680,8 +680,8 @@ func (policy *regoEnforcer) EnforceDumpStacksPolicy() error {
 	return policy.enforce("dump_stacks", input)
 }
 
-func (policy *regoEnforcer) EnforceProcessLoggingPolicy() error {
+func (policy *regoEnforcer) EnforceStdioAccessPolicy() error {
 	input := map[string]interface{}{}
 
-	return policy.enforce("process_logging", input)
+	return policy.enforce("stdio_access", input)
 }
