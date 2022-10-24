@@ -36,7 +36,7 @@ var policyRegoTemplate string
 //go:embed open_door.rego
 var openDoorRegoTemplate string
 
-func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConfig, _ bool, _ bool, _ bool) (string, error) {
+func marshalJSON(allowAll bool, containers []*Container, _ []ExternalProcessConfig, _ bool, _ bool) (string, error) {
 	var policy *SecurityPolicy
 	if allowAll {
 		if len(containers) > 0 {
