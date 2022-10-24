@@ -259,7 +259,7 @@ func writeContainer(builder *strings.Builder, container *securityPolicyContainer
 	writeSignals(builder, container.Signals, indent+indentUsing)
 	writeLine(builder, `%s"allow_elevated": %v,`, indent+indentUsing, container.AllowElevated)
 	writeLine(builder, `%s"working_dir": "%s"`, indent+indentUsing, container.WorkingDir)
-	writeLine(builder, `%s"allow_stdio_access": "%t"`, indent+indentUsing, container.AllowStdioAccess)
+	writeLine(builder, `%s"allow_stdio_access": %t`, indent+indentUsing, container.AllowStdioAccess)
 	writeLine(builder, "%s}%s", indent, end)
 }
 
