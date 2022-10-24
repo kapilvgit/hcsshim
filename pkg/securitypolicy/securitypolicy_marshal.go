@@ -233,7 +233,7 @@ func (p containerExecProcess) marshalRego() string {
 	command := stringArray(p.Command).marshalRego()
 	signals := signalArray(p.Signals).marshalRego()
 
-	return fmt.Sprintf(`{"command": %s, "signals": %s, "allow_logging": %s}`, command, signals, p.AllowLogging)
+	return fmt.Sprintf(`{"command": %s, "signals": %s, "allow_stdio_access": %s}`, command, signals, p.AllowStdioAccess)
 }
 
 func writeExecProcesses(builder *strings.Builder, execProcesses []containerExecProcess, indent string) {
@@ -259,7 +259,7 @@ func writeContainer(builder *strings.Builder, container *securityPolicyContainer
 	writeSignals(builder, container.Signals, indent+indentUsing)
 	writeLine(builder, `%s"allow_elevated": %v,`, indent+indentUsing, container.AllowElevated)
 	writeLine(builder, `%s"working_dir": "%s"`, indent+indentUsing, container.WorkingDir)
-	writeLine(builder, `%s"allow_logging": "%s"`, indent+indentUsing, container.AllowLogging)
+	writeLine(builder, `%s"allow_stdio_access": "%s"`, indent+indentUsing, container.AllowStdioAccess)
 	writeLine(builder, "%s}%s", indent, end)
 }
 
@@ -280,7 +280,7 @@ func addContainers(builder *strings.Builder, containers []*securityPolicyContain
 func (p externalProcess) marshalRego() string {
 	command := stringArray(p.command).marshalRego()
 	envRules := envRuleArray(p.envRules).marshalRego()
-	return fmt.Sprintf(`{"command": %s, "env_rules": %s, "working_dir": "%s", "allow_logging": %s}`, command, envRules, p.workingDir, p.allowLogging)
+	return fmt.Sprintf(`{"command": %s, "env_rules": %s, "working_dir": "%s", "allow_stdio_access": %s}`, command, envRules, p.workingDir, p.AllowStdioAccess)
 }
 
 func addExternalProcesses(builder *strings.Builder, processes []*externalProcess) {
