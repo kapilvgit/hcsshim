@@ -506,8 +506,9 @@ func (h *Host) ExecProcess(ctx context.Context, containerID string, params prot.
 	var pid int
 	var c *Container
 
-	if err = h.securityPolicyEnforcer.EnforceStdioAccessPolicy(); err != nil {
+	if err = h.securityPolicyEnforcer.EnforceStdioAccessPolicy(containerID); err != nil {
 		// logging isn't allowed by policy, this turns off "container logging"
+		conSettings.StdIn = nil
 		conSettings.StdOut = nil
 		conSettings.StdErr = nil
 	}

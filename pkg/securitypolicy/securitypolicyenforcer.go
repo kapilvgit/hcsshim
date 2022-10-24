@@ -54,7 +54,7 @@ type SecurityPolicyEnforcer interface {
 	EnforcePlan9UnmountPolicy(target string) (err error)
 	EnforceGetPropertiesPolicy() error
 	EnforceDumpStacksPolicy() error
-	EnforceStdioAccessPolicy() error
+	EnforceStdioAccessPolicy(containerID string) error
 }
 
 func newSecurityPolicyFromBase64JSON(base64EncodedPolicy string) (*SecurityPolicy, error) {
@@ -508,7 +508,7 @@ func (*StandardSecurityPolicyEnforcer) EnforceDumpStacksPolicy() error {
 
 // Stub. We are deprecating the standard enforcer. Newly added enforcement
 // points are simply allowed.
-func (*StandardSecurityPolicyEnforcer) EnforceStdioAccessPolicy() error {
+func (*StandardSecurityPolicyEnforcer) EnforceStdioAccessPolicy(_ string) error {
 	return nil
 }
 
@@ -841,7 +841,7 @@ func (OpenDoorSecurityPolicyEnforcer) ExtendDefaultMounts(_ []oci.Mount) error {
 	return nil
 }
 
-func (OpenDoorSecurityPolicyEnforcer) EnforceStdioAccessPolicy() error {
+func (OpenDoorSecurityPolicyEnforcer) EnforceStdioAccessPolicy(_ string) error {
 	return nil
 }
 
@@ -911,7 +911,7 @@ func (ClosedDoorSecurityPolicyEnforcer) ExtendDefaultMounts(_ []oci.Mount) error
 	return nil
 }
 
-func (ClosedDoorSecurityPolicyEnforcer) EnforceStdioAccessPolicy() error {
+func (ClosedDoorSecurityPolicyEnforcer) EnforceStdioAccessPolicy(_ string) error {
 	return errors.New("container logging is denied by policy")
 }
 
