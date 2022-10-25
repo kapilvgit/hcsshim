@@ -47,7 +47,7 @@ type SecurityPolicyEnforcer interface {
 	ExtendDefaultMounts([]oci.Mount) error
 	EncodedSecurityPolicy() string
 	EnforceExecInContainerPolicy(containerID string, argList []string, envList []string, workingDir string) error
-	EnforceExecExternalProcessPolicy(argList []string, envList []string, workingDir string) error
+	EnforceExecExternalProcessPolicy(argList []string, envList []string, workingDir string) (stdioAllowed bool, err error)
 	EnforceShutdownContainerPolicy(containerID string) error
 	EnforceSignalContainerProcessPolicy(containerID string, signal syscall.Signal, isInitProcess bool, startupArgList []string) error
 	EnforcePlan9MountPolicy(target string) (err error)
@@ -460,8 +460,8 @@ func (*StandardSecurityPolicyEnforcer) EnforceExecInContainerPolicy(_ string, _ 
 
 // Stub. We are deprecating the standard enforcer. Newly added enforcement
 // points are simply allowed.
-func (*StandardSecurityPolicyEnforcer) EnforceExecExternalProcessPolicy(_ []string, _ []string, _ string) error {
-	return nil
+func (*StandardSecurityPolicyEnforcer) EnforceExecExternalProcessPolicy(_ []string, _ []string, _ string) (bool, error) {
+	return true, nil
 }
 
 // Stub. We are deprecating the standard enforcer. Newly added enforcement
@@ -809,8 +809,8 @@ func (OpenDoorSecurityPolicyEnforcer) EnforceExecInContainerPolicy(_ string, _ [
 	return nil
 }
 
-func (OpenDoorSecurityPolicyEnforcer) EnforceExecExternalProcessPolicy(_ []string, _ []string, _ string) error {
-	return nil
+func (OpenDoorSecurityPolicyEnforcer) EnforceExecExternalProcessPolicy(_ []string, _ []string, _ string) (bool, error) {
+	return true, nil
 }
 
 func (*OpenDoorSecurityPolicyEnforcer) EnforceShutdownContainerPolicy(_ string) error {
@@ -879,8 +879,8 @@ func (ClosedDoorSecurityPolicyEnforcer) EnforceExecInContainerPolicy(_ string, _
 	return errors.New("starting additional processes in a container is denied by policy")
 }
 
-func (ClosedDoorSecurityPolicyEnforcer) EnforceExecExternalProcessPolicy(_ []string, _ []string, _ string) error {
-	return errors.New("starting additional processes in uvm is denied by policy")
+func (ClosedDoorSecurityPolicyEnforcer) EnforceExecExternalProcessPolicy(_ []string, _ []string, _ string) (bool, error) {
+	return false, errors.New("starting additional processes in uvm is denied by policy")
 }
 
 func (*ClosedDoorSecurityPolicyEnforcer) EnforceShutdownContainerPolicy(_ string) error {

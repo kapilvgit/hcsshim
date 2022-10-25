@@ -620,14 +620,15 @@ func (policy *regoEnforcer) EnforceExecInContainerPolicy(containerID string, arg
 	return policy.enforce("exec_in_container", input)
 }
 
-func (policy *regoEnforcer) EnforceExecExternalProcessPolicy(argList []string, envList []string, workingDir string) error {
+func (policy *regoEnforcer) EnforceExecExternalProcessPolicy(argList []string, envList []string, workingDir string) (bool, error) {
 	input := map[string]interface{}{
 		"argList":    argList,
 		"envList":    envList,
 		"workingDir": workingDir,
 	}
 
-	return policy.enforce("exec_external", input)
+	// TODO STA
+	return true, policy.enforce("exec_external", input)
 }
 
 func (policy *regoEnforcer) EnforceShutdownContainerPolicy(containerID string) error {
