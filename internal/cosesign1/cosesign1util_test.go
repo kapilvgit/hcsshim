@@ -32,7 +32,7 @@ func readFileString(filename string) (string, error) {
 	return string(data), nil
 }
 
-func readFileBytesgOrExit(filename string) []byte {
+func readFileBytesOrExit(filename string) []byte {
 	val, err := readFileBytes(filename)
 	if err != nil {
 		println("failed to load from file '" + filename + "' with error " + string(err.Error()))
@@ -41,7 +41,7 @@ func readFileBytesgOrExit(filename string) []byte {
 	return val
 }
 func readFileStringOrExit(filename string) string {
-	val := readFileBytesgOrExit(filename)
+	val := readFileBytesOrExit(filename)
 	return string(val)
 }
 
@@ -61,7 +61,7 @@ func TestMain(m *testing.M) {
 	}
 
 	fragmentRego = readFileStringOrExit("infra.rego.base64")
-	fragmentCose = readFileBytesgOrExit("infra.rego.cose")
+	fragmentCose = readFileBytesOrExit("infra.rego.cose")
 	leafPrivatePem = readFileStringOrExit("leaf.private.pem")
 	leafCertPEM = readFileStringOrExit("leaf.cert.pem")
 	leafPubkeyPEM = readFileStringOrExit("leaf.public.pem")
