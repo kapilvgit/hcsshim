@@ -55,10 +55,10 @@ didx509: chain.pem sign1util
 did-check: chain.pem infra.rego.cose sign1util
 	./sign1util check -in infra.rego.cose -did did:x509:0:sha256:RgpNsHOK5hPlCAfTtiGY_BcDhFRxQbJnhlxNDhxps6U::subject:CN:Test%20Leaf%20%28DO%20NOT%20TRUST%29
 
-# Ought to work but does not yet. For normal workflow start from the chain.pem, here we'd take the chain from inside the cose sign1 doc, eg to manually config it is
-# as otherwise expectd
+# For normal workflow start from the chain.pem, here we'd take the chain from inside the cose sign1 doc, eg to manually confirm it is
+# as otherwise expected (ie that the issuer DID matches the chain) or to shortcut getting a DID from a cose document.
 
-todo: sign1util infra.rego.cose
+did-from-cose: sign1util infra.rego.cose
 	./sign1util did:x509 -in infra.rego.cose -policy cn
 
 did-fail-fingerprint: chain.pem sign1util

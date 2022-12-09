@@ -30,7 +30,7 @@ func parsePemChain(chainPem string) ([]*x509.Certificate, error) {
 	return chain, nil
 }
 
-func MakeDidX509(fingerprintAlgorithm string, fingerprintIndex int, chainFilename string, didPolicy string, verbose bool) (string, error) {
+func MakeDidX509(fingerprintAlgorithm string, fingerprintIndex int, chainPEM string, didPolicy string, verbose bool) (string, error) {
 	if fingerprintAlgorithm != "sha256" {
 		return "", fmt.Errorf("unsupported fingerprint hash algorithm '%s'", fingerprintAlgorithm)
 	}
@@ -39,7 +39,6 @@ func MakeDidX509(fingerprintAlgorithm string, fingerprintIndex int, chainFilenam
 		return "", fmt.Errorf("fingerprint index must be >= 1")
 	}
 
-	var chainPEM = string(ReadBlob(chainFilename))
 	chain, err := parsePemChain(chainPEM)
 
 	if err != nil {

@@ -105,7 +105,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 	// The HeaderLabelX5Chain entry in the cose header may be a blob (single cert) or an array of blobs (a chain) see https://datatracker.ietf.org/doc/draft-ietf-cose-x509/08/
 	if isDERChain(chainDER) {
 		chainIA = chainDER.([]interface{})
-	} else if !isDEROnly(chainDER) {
+	} else if isDEROnly(chainDER) {
 		chainIA = append(chainIA, chainDER)
 	} else {
 		return nil, fmt.Errorf("x5Chain wrong type")
@@ -166,21 +166,30 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 		log.Println(chainPEM)
 	}
 
-	opts := x509.VerifyOptions{
-		Intermediates: intermediateCerts,
-		Roots:         rootCerts,
-		// Any valid cert chain is good for us as we will be matching
-		// part of the chain with a customer provided cert fingerprint.
-		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	// First check that the chain is itself good.
+	// Note that a single cert would fail here as it
+	// falls back to the system root certs which will
+	// never have issued the leaf cert.
+
+	if len(chain) > 1 {
+
+		opts := x509.VerifyOptions{
+			Intermediates: intermediateCerts,
+			Roots:         rootCerts,
+			// Any valid cert chain is good for us as we will be matching
+			// part of the chain with a customer provided cert fingerprint.
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		}
+
+		_, err = leafCert.Verify(opts)
+
+		if err != nil {
+			return nil, fmt.Errorf("certificate chain verification failed - %w", err)
+		}
 	}
 
-	_, err = leafCert.Verify(opts)
-
-	if err != nil {
-		return nil, fmt.Errorf("certificate chain verification failed")
-	}
-
-	// Use the supplied public key or the one we extracted from the leaf cert.
+	// Next check that the signature over the document was made with the private key matching the
+	// public key we extracted from the leaf cert.
 	var keyToCheck any
 	if len(optionalPubKeyPEM) == 0 {
 		keyToCheck = leafPubKey

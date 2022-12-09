@@ -121,10 +121,11 @@ func main() {
 	didX509Cmd := flag.NewFlagSet("did:x509", flag.ExitOnError)
 
 	didX509Cmd.StringVar(&didFingerprintAlgorithm, "fingerprint-algorithm", "sha256", "hash algorithm for certificate fingerprints")
-	didX509Cmd.StringVar(&chainFilename, "chain", "chain.pem", "certificate chain to use (pem)")
+	didX509Cmd.StringVar(&chainFilename, "chain", "", "certificate chain to use (pem)")
 	didX509Cmd.IntVar(&didFingerprintIndex, "i", 1, "index of the certificate fingerprint in the chain")
-	didX509Cmd.StringVar(&didPolicy, "policy", "subject", "did:509 policy (cn/eku/custom)")
+	didX509Cmd.StringVar(&didPolicy, "policy", "cn", "did:509 policy (cn/eku/custom)")
 	didX509Cmd.BoolVar(&verbose, "verbose", false, "verbose output")
+	didX509Cmd.StringVar(&inputFilename, "in", "input.cose", "input file")
 
 	chainCmd := flag.NewFlagSet("chain", flag.ExitOnError)
 	chainCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
@@ -199,8 +200,25 @@ func main() {
 
 		case "did:x509":
 			err := didX509Cmd.Parse(os.Args[2:])
+			var chainPEM string
 			if err == nil {
-				r, err := cosesign1.MakeDidX509(didFingerprintAlgorithm, didFingerprintIndex, chainFilename, didPolicy, verbose)
+				if len(chainFilename) > 0 {
+					chainPEM = string(cosesign1.ReadBlob("chain.pem"))
+				}
+				if len(inputFilename) > 0 {
+					if len(chainFilename) > 0 {
+						log.Print("cannot specify chain with cose file - it comes from the chain in the file")
+						break
+					}
+					unpacked, err := checkCoseSign1(inputFilename, "", "", "", true)
+					if err != nil {
+						log.Print("error: " + err.Error())
+						break
+					}
+
+					chainPEM = unpacked.ChainPem
+				}
+				r, err := cosesign1.MakeDidX509(didFingerprintAlgorithm, didFingerprintIndex, chainPEM, didPolicy, verbose)
 				if err != nil {
 					log.Print("error: " + err.Error())
 				} else {

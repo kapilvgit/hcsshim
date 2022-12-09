@@ -157,7 +157,8 @@ func Test_OldCose(t *testing.T) {
 }
 
 func Test_DidX509(t *testing.T) {
-	_, err := MakeDidX509("sha256", 1, "chain.pem", "subject:CN:Test Leaf (DO NOT TRUST)", true)
+	var chainPEM = string(ReadBlob("chain.pem"))
+	_, err := MakeDidX509("sha256", 1, chainPEM, "subject:CN:Test Leaf (DO NOT TRUST)", true)
 	if err != nil {
 		t.Errorf("did:x509 creation failed: %s", err)
 	}
