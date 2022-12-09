@@ -67,8 +67,6 @@ func createCoseSign1(payloadFilename string, issuer string, feed string, content
 	return cosesign1.CreateCoseSign1(payloadBlob, issuer, feed, contentType, chainPem, keyPem, saltType, algorithm, verbose)
 }
 
-// example scitt usage to try tro match
-// scitt sign --claims <fragment>.rego --content-type application/unknown+json --did-doc ~/keys/did.json --key ~/keys/key.pem --out <fragment>.cose
 func main() {
 	var payloadFilename string
 	var contentType string
