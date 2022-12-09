@@ -425,8 +425,10 @@ func (h *Host) CreateContainer(ctx context.Context, id string, settings *prot.VM
 			uvmReferenceInfo := fmt.Sprintf("UVM_REFERENCE_INFO=%s", h.uvmReferenceInfo)
 			settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, uvmReferenceInfo)
 		}
-		amdCertEnv := fmt.Sprintf("UVM_HOST_AMD_CERTIFICATE=%s", settings.OCISpecification.Annotations[annotations.HostAMDCertificate])
-		settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, amdCertEnv)
+		if len(annotations.HostAMDCertificate) > 0 {
+			amdCertEnv := fmt.Sprintf("UVM_HOST_AMD_CERTIFICATE=%s", settings.OCISpecification.Annotations[annotations.HostAMDCertificate])
+			settings.OCISpecification.Process.Env = append(settings.OCISpecification.Process.Env, amdCertEnv)
+		}
 	}
 
 	// Create the BundlePath
