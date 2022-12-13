@@ -79,7 +79,7 @@ func comparePEMs(pk1pem string, pk2pem string) bool {
 // Decode a COSE_Sign1 document and check that we get the expected payload, issuer, keys, certs etc.
 func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 	var unpacked *UnpackedCoseSign1
-	unpacked, err := UnpackAndValidateCOSE1CertChain(fragmentCose, nil, false)
+	unpacked, err := UnpackAndValidateCOSE1CertChain(fragmentCose, nil)
 
 	if err != nil {
 		t.Errorf("UnpackAndValidateCOSE1CertChain failed: %s", err.Error())
@@ -119,7 +119,7 @@ func Test_UnpackAndValidateCannedFragmentCorrupted(t *testing.T) {
 	var offset = len(fragCose) / 2
 	// corrupt the cose document (use the uncorrupted one as source in case we loop back to a good value)
 	fragCose[offset] = fragmentCose[offset] + 1
-	var _, err = UnpackAndValidateCOSE1CertChain(fragCose, nil, false)
+	var _, err = UnpackAndValidateCOSE1CertChain(fragCose, nil)
 
 	// expect it to fail
 	if err == nil {
@@ -129,7 +129,7 @@ func Test_UnpackAndValidateCannedFragmentCorrupted(t *testing.T) {
 
 // Use CreateCoseSign1 to make a document that should match the one made by the makefile
 func Test_CreateCoseSign1Fragment(t *testing.T) {
-	var raw, err = CreateCoseSign1([]byte(fragmentRego), "TestIssuer", "TestFeed", "application/unknown+json", []byte(certChainPEM), []byte(leafPrivatePem), "zero", cose.AlgorithmES384, false)
+	var raw, err = CreateCoseSign1([]byte(fragmentRego), "TestIssuer", "TestFeed", "application/unknown+json", []byte(certChainPEM), []byte(leafPrivatePem), "zero", cose.AlgorithmES384)
 	if err != nil {
 		t.Errorf("CreateCoseSign1 failed: %s", err.Error())
 	}
@@ -149,7 +149,7 @@ func Test_OldCose(t *testing.T) {
 	filename := "esrp.test.cose"
 	cose, err := readFileBytes(filename)
 	if err == nil {
-		_, err = UnpackAndValidateCOSE1CertChain(cose, nil, false)
+		_, err = UnpackAndValidateCOSE1CertChain(cose, nil)
 	}
 	if err != nil {
 		t.Errorf("validation of %s failed", filename)

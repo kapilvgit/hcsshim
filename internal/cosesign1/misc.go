@@ -4,13 +4,14 @@ package cosesign1
 
 import (
 	"fmt"
+	"log"
 	"os"
 
 	"crypto/x509"
 	"encoding/base64"
 	"io"
-	"log"
 
+	"github.com/sirupsen/logrus"
 	"github.com/veraison/go-cose"
 )
 
@@ -111,18 +112,18 @@ func base64PublicKeyToPEM(base64Key string) string {
 }
 
 func PrintCert(name string, x509cert *x509.Certificate) {
-	log.Printf("%s:\n", name)
-	log.Printf("  Issuer = %s\n", x509cert.Issuer.String())
-	log.Printf("  Subject = %s\n", x509cert.Subject.String())
-	log.Printf("  AuthorityKeyId = %q\n", x509cert.AuthorityKeyId)
-	log.Printf("  SubjectKeyId = %q\n", x509cert.SubjectKeyId)
+	logrus.Printf("%s:\n", name)
+	logrus.Printf("  Issuer = %s\n", x509cert.Issuer.String())
+	logrus.Printf("  Subject = %s\n", x509cert.Subject.String())
+	logrus.Printf("  AuthorityKeyId = %q\n", x509cert.AuthorityKeyId)
+	logrus.Printf("  SubjectKeyId = %q\n", x509cert.SubjectKeyId)
 
 	var pem = x509ToPEM(x509cert) // blob of the leaf x509 cert reformatted into pem (base64) style as per the fragment policy rules expect
 	var pubKey = x509cert.PublicKey
 	var pubKeyPem = keyToPEM(pubKey)
 
-	log.Printf("  Cert PEM = \n%s\n", pem)
-	log.Printf("  Public Key PEM = \n%s\n", pubKeyPem)
+	logrus.Printf("  Cert PEM = \n%s\n", pem)
+	logrus.Printf("  Public Key PEM = \n%s\n", pubKeyPem)
 }
 
 func PrintChain(inputFilename string) error {

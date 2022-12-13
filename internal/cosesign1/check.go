@@ -4,7 +4,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"log"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/veraison/go-cose"
 )
@@ -71,7 +72,7 @@ type UnpackedCoseSign1 struct {
 // accessors and member functions such as "verity()". However that was done there could exist state objects
 // for badly formed COSE Sign1 documents and that would complicate the jobs of callers.
 
-func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbose bool) (*UnpackedCoseSign1, error) {
+func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte) (*UnpackedCoseSign1, error) {
 	var msg cose.Sign1Message
 	err := msg.UnmarshalCBOR(raw)
 	if err != nil {
@@ -89,9 +90,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 		return nil, fmt.Errorf("algorithm wrong type")
 	}
 
-	if verbose {
-		log.Printf("algorithm %d", algo)
-	}
+	logrus.Debugf("COSE Sign1 unpack: algorithm %d", algo)
 
 	// The spec says this is ordered - leaf, intermediates, root. X5Bag is unordered and would need sorting
 	chainDER, ok := protected[cose.HeaderLabelX5Chain]
@@ -118,9 +117,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 		if err == nil {
 			chain = append(chain, cert)
 		} else {
-			if verbose {
-				log.Printf("Parse certificate failed on %d: %s", index, err.Error())
-			}
+			logrus.Debugf("Parse certificate failed on %d: %s", index, err.Error())
 			return nil, err
 		}
 	}
@@ -161,10 +158,8 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 		chainPEM += x509ToPEM(c)
 	}
 
-	if verbose {
-		log.Println("Certificate chain:")
-		log.Println(chainPEM)
-	}
+	logrus.Debugln("Certificate chain:")
+	logrus.Debugln(chainPEM)
 
 	// First check that the chain is itself good.
 	// Note that a single cert would fail here as it
@@ -172,7 +167,6 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 	// never have issued the leaf cert.
 
 	if len(chain) > 1 {
-
 		opts := x509.VerifyOptions{
 			Intermediates: intermediateCerts,
 			Roots:         rootCerts,
@@ -200,19 +194,13 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 
 		keyToCheck, err = x509.ParsePKCS1PublicKey(keyBytes)
 		if err == nil {
-			if verbose {
-				log.Printf("parsed as PKCS1 public key %q\n", keyToCheck)
-			}
+			logrus.Debugf("parsed as PKCS1 public key %q\n", keyToCheck)
 		} else {
 			keyToCheck, err = x509.ParsePKIXPublicKey(keyBytes)
 			if err == nil {
-				if verbose {
-					log.Printf("parsed as PKIX key %q\n", keyToCheck)
-				}
+				logrus.Debugf("parsed as PKIX key %q\n", keyToCheck)
 			} else {
-				if verbose {
-					log.Print("Failed to parse provided public key - Error = " + err.Error())
-				}
+				logrus.Debug("Failed to parse provided public key - Error = " + err.Error())
 				return nil, err
 			}
 		}
@@ -220,17 +208,13 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte, verbo
 
 	verifier, err := cose.NewVerifier(algo, keyToCheck)
 	if err != nil {
-		if verbose {
-			log.Printf("cose.NewVerifier failed (algo %d): %s", algo, err.Error())
-		}
+		logrus.Debugf("cose.NewVerifier failed (algo %d): %s", algo, err.Error())
 		return nil, err
 	}
 
 	err = msg.Verify(nil, verifier)
 	if err != nil {
-		if verbose {
-			log.Printf("msg.Verify failed: algo = %d err = %s", algo, err.Error())
-		}
+		logrus.Debugf("msg.Verify failed: algo = %d err = %s", algo, err.Error())
 		return nil, err
 	}
 

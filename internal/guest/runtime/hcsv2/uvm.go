@@ -171,7 +171,7 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 	// will be removed eventually.
 	_ = os.WriteFile("/tmp/fragment.blob", blob, 0644)
 
-	unpacked, err := cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil, true)
+	unpacked, err := cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil)
 	if err != nil {
 		return fmt.Errorf("InjectFragment failed COSE validation: %s", err.Error())
 	}
@@ -182,7 +182,7 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 	chainPem := unpacked.ChainPem
 
 	log.G(ctx).WithFields(logrus.Fields{
-		"issues":   issuer, // eg the DID:x509:blah....
+		"issuer":   issuer, // eg the DID:x509:blah....
 		"feed":     feed,
 		"cty":      unpacked.ContentType,
 		"chainPem": chainPem,
@@ -200,7 +200,7 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 	// we only care if there was an error or not
 	_, err = didx509resolver.Resolve(unpacked.ChainPem, issuer, true)
 	if err != nil {
-		log.G(ctx).Printf("did resolver failed to match chain for issuer %s and feed %s - err %s", issuer, feed, err.Error())
+		log.G(ctx).Printf("Badly formed fragment - did resolver failed to match fragment did:x509 from chain with purported issuer %s, feed %s - err %s", issuer, feed, err.Error())
 		return err
 	}
 

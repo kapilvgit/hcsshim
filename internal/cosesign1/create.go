@@ -8,7 +8,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"io"
-	"log"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/veraison/go-cose"
 )
@@ -29,7 +30,7 @@ func pem2der(chainPem []byte) []byte {
 	return nil
 }
 
-func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType string, chainPem []byte, keyPem []byte, saltType string, algo cose.Algorithm, verbose bool) (result []byte, err error) {
+func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType string, chainPem []byte, keyPem []byte, saltType string, algo cose.Algorithm) (result []byte, err error) {
 	var signingKey any
 	var keyDer *pem.Block
 	keyDer, _ = pem.Decode(keyPem) // discard remaining bytes
@@ -40,28 +41,26 @@ func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType
 
 	// try parsing the various likely key types in turn
 	signingKey, err = x509.ParseECPrivateKey(keyBytes)
-	if err == nil && verbose {
-		log.Printf("parsed EC signing (private) key %q\n", signingKey)
+	if err == nil {
+		logrus.Debugf("parsed EC signing (private) key %q\n", signingKey)
 	}
 
 	if err != nil {
 		signingKey, err = x509.ParsePKCS8PrivateKey(keyBytes)
-		if err == nil && verbose {
-			log.Printf("parsed PKCS8 signing (private) key %q\n", signingKey)
+		if err == nil {
+			logrus.Debugf("parsed PKCS8 signing (private) key %q\n", signingKey)
 		}
 	}
 
 	if err != nil {
 		signingKey, err = x509.ParsePKCS1PrivateKey(keyBytes)
-		if err == nil && verbose {
-			log.Printf("parsed PKCS1 signing (private) key %q\n", signingKey)
+		if err == nil {
+			logrus.Debugf("parsed PKCS1 signing (private) key %q\n", signingKey)
 		}
 	}
 
 	if err != nil {
-		if verbose {
-			log.Print("failed to decode a key, error = " + err.Error())
-		}
+		logrus.Debug("failed to decode a key, error = " + err.Error())
 		return nil, err
 	}
 
@@ -74,13 +73,9 @@ func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType
 	chainCerts, err = x509.ParseCertificates(chainDER)
 
 	if err == nil {
-		if verbose {
-			log.Printf("parsed cert chain for leaf: %v\n", *chainCerts[0])
-		}
+		logrus.Debugf("parsed cert chain for leaf: %v\n", *chainCerts[0])
 	} else {
-		if verbose {
-			log.Print("cert parsing failed - " + err.Error())
-		}
+		logrus.Debug("cert parsing failed - " + err.Error())
 		return nil, err
 	}
 
@@ -104,14 +99,8 @@ func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType
 	var signer cose.Signer
 	signer, err = cose.NewSigner(algo, cryptoSigner)
 	if err != nil {
-		if verbose {
-			log.Print("cose.NewSigner err = " + err.Error())
-		}
+		logrus.Debug("cose.NewSigner err = " + err.Error())
 		return nil, err
-	}
-
-	if verbose {
-		log.Printf("cose signer %q\n", signer)
 	}
 
 	// See https://www.iana.org/assignments/cose/cose.xhtml#:~:text=COSE%20Header%20Parameters%20%20%20%20Name%20,algorithm%20to%20use%20%2019%20more%20rows
@@ -136,9 +125,7 @@ func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType
 
 	result, err = cose.Sign1(saltReader, signer, headers, payloadBlob, nil)
 	if err != nil {
-		if verbose {
-			log.Print("cose.Sign1 failed\n" + err.Error())
-		}
+		logrus.Debug("cose.Sign1 creation failed\n" + err.Error())
 		return nil, err
 	}
 
