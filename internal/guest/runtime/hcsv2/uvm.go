@@ -171,7 +171,7 @@ func (h *Host) InjectFragment(ctx context.Context, fragment *guestresource.LCOWS
 	// will be removed eventually.
 	_ = os.WriteFile("/tmp/fragment.blob", blob, 0644)
 
-	unpacked, err := cosesign1.UnpackAndValidateCOSE1CertChain(raw, nil)
+	unpacked, err := cosesign1.UnpackAndValidateCOSE1CertChain(raw)
 	if err != nil {
 		return fmt.Errorf("InjectFragment failed COSE validation: %s", err.Error())
 	}

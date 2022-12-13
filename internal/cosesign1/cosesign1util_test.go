@@ -40,6 +40,7 @@ func readFileBytesOrExit(filename string) []byte {
 	}
 	return val
 }
+
 func readFileStringOrExit(filename string) string {
 	val := readFileBytesOrExit(filename)
 	return string(val)
@@ -57,6 +58,7 @@ func TestMain(m *testing.M) {
 
 	err := exec.Command("make", "chain.pem", "infra.rego.cose").Run()
 	if err != nil {
+		println("Failed to build the required test files: %s", err.Error())
 		os.Exit(1)
 	}
 
@@ -79,7 +81,7 @@ func comparePEMs(pk1pem string, pk2pem string) bool {
 // Decode a COSE_Sign1 document and check that we get the expected payload, issuer, keys, certs etc.
 func Test_UnpackAndValidateCannedFragment(t *testing.T) {
 	var unpacked *UnpackedCoseSign1
-	unpacked, err := UnpackAndValidateCOSE1CertChain(fragmentCose, nil)
+	unpacked, err := UnpackAndValidateCOSE1CertChain(fragmentCose)
 
 	if err != nil {
 		t.Errorf("UnpackAndValidateCOSE1CertChain failed: %s", err.Error())
@@ -119,7 +121,7 @@ func Test_UnpackAndValidateCannedFragmentCorrupted(t *testing.T) {
 	var offset = len(fragCose) / 2
 	// corrupt the cose document (use the uncorrupted one as source in case we loop back to a good value)
 	fragCose[offset] = fragmentCose[offset] + 1
-	var _, err = UnpackAndValidateCOSE1CertChain(fragCose, nil)
+	var _, err = UnpackAndValidateCOSE1CertChain(fragCose)
 
 	// expect it to fail
 	if err == nil {
@@ -149,7 +151,7 @@ func Test_OldCose(t *testing.T) {
 	filename := "esrp.test.cose"
 	cose, err := readFileBytes(filename)
 	if err == nil {
-		_, err = UnpackAndValidateCOSE1CertChain(cose, nil)
+		_, err = UnpackAndValidateCOSE1CertChain(cose)
 	}
 	if err != nil {
 		t.Errorf("validation of %s failed", filename)

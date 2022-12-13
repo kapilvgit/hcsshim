@@ -24,12 +24,6 @@ func ReadBlob(filename string) []byte {
 	return content
 }
 
-func ReadString(filename string) string {
-	content := ReadBlob(filename)
-	str := string(content)
-	return str
-}
-
 // Type to replace the rand.Reader with a source of fixed salt.
 // Can be provided to the cose.Sign1 method instead of rand.Reader such that
 // the signature is deterministic for testing and debugging purposes.

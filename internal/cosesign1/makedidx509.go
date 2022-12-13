@@ -57,32 +57,29 @@ func MakeDidX509(fingerprintAlgorithm string, fingerprintIndex int, chainPEM str
 	didPolicyUpper := strings.ToUpper(didPolicy)
 	switch didPolicyUpper {
 	case "CN":
-		{
-			policyTokens = append(policyTokens, "subject", "CN", chain[0].Subject.CommonName)
-		}
-	case "EKU":
-		{
-			// Note: In general there may be many predefined and not predefined key usages.
-			// We pick the first non-predefined one, or, if there are none, the first predefined one.
-			// Others must be specified manually (as in custom, next branch).
+		policyTokens = append(policyTokens, "subject", "CN", chain[0].Subject.CommonName)
 
-			// non-predefined
-			if len(chain[0].UnknownExtKeyUsage) > 0 {
-				policyTokens = append(policyTokens, "eku", chain[0].UnknownExtKeyUsage[0].String())
-			} else if len(chain[0].ExtKeyUsage) > 0 {
-				extendedKeyUsage := chain[0].ExtKeyUsage[0]
-				keyUsageOid, ok := didx509resolver.OidFromExtKeyUsage(extendedKeyUsage)
-				// predefined
-				if ok {
-					policyTokens = append(policyTokens, "eku", keyUsageOid.String())
-				}
+	case "EKU":
+		// Note: In general there may be many predefined and not predefined key usages.
+		// We pick the first non-predefined one, or, if there are none, the first predefined one.
+		// Others must be specified manually (as in custom, next branch).
+
+		// non-predefined
+		if len(chain[0].UnknownExtKeyUsage) > 0 {
+			policyTokens = append(policyTokens, "eku", chain[0].UnknownExtKeyUsage[0].String())
+		} else if len(chain[0].ExtKeyUsage) > 0 {
+			extendedKeyUsage := chain[0].ExtKeyUsage[0]
+			keyUsageOid, ok := didx509resolver.OidFromExtKeyUsage(extendedKeyUsage)
+			// predefined
+			if ok {
+				policyTokens = append(policyTokens, "eku", keyUsageOid.String())
 			}
 		}
+
 	default:
-		{
-			// Custom policies
-			policyTokens = strings.Split(didPolicy, ":")
-		}
+		// Custom policies
+		policyTokens = strings.Split(didPolicy, ":")
+
 	}
 
 	if len(policyTokens) == 0 {

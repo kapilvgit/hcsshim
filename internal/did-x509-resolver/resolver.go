@@ -214,6 +214,8 @@ func verifyDid(chain []*x509.Certificate, did string) error {
 				return errors.New("at least one key-value pair is required")
 			}
 
+			// Walk the x509 subject description (a list of key:value pairs like "CN:ContainerPlat" saying the subject common
+			// name is ContainerPlat) extrating the various fields and checking they do not occur more than once.
 			var seenFields []string
 			for i := 0; i < len(args); i += 2 {
 				k := strings.ToUpper(args[i])

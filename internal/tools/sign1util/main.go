@@ -11,15 +11,11 @@ import (
 	didx509resolver "github.com/Microsoft/hcsshim/internal/did-x509-resolver"
 )
 
-func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, chainFilename string, didString string, verbose bool) (*cosesign1.UnpackedCoseSign1, error) {
+func checkCoseSign1(inputFilename string, chainFilename string, didString string, verbose bool) (*cosesign1.UnpackedCoseSign1, error) {
 	if verbose == true {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 	coseBlob := cosesign1.ReadBlob(inputFilename)
-	var optionalPubKeyPEM []byte
-	if optionalPubKeyFilename != "" {
-		optionalPubKeyPEM = cosesign1.ReadBlob(optionalPubKeyFilename)
-	}
 
 	var chainPEM []byte
 	var chainPEMString string
@@ -30,7 +26,7 @@ func checkCoseSign1(inputFilename string, optionalPubKeyFilename string, chainFi
 
 	var unpacked *cosesign1.UnpackedCoseSign1
 	var err error
-	unpacked, err = cosesign1.UnpackAndValidateCOSE1CertChain(coseBlob, optionalPubKeyPEM)
+	unpacked, err = cosesign1.UnpackAndValidateCOSE1CertChain(coseBlob)
 	if err != nil {
 		logrus.Print("checkCoseSign1 failed - " + err.Error())
 		return nil, err
@@ -143,14 +139,13 @@ func main() {
 		case "check":
 			checkCmd := flag.NewFlagSet("check", flag.ExitOnError)
 			checkCmd.StringVar(&inputFilename, "in", "input.cose", "input file")
-			checkCmd.StringVar(&keyFilename, "pub", "", "input public key (PEM)")
 			checkCmd.StringVar(&chainFilename, "chain", "chain.pem", "key or cert file to use (pem)")
 			checkCmd.StringVar(&didString, "did", "", "DID x509 string to resolve against cert chain")
 			checkCmd.BoolVar(&verbose, "verbose", false, "verbose output")
 
 			err := checkCmd.Parse(os.Args[2:])
 			if err == nil {
-				_, err := checkCoseSign1(inputFilename, keyFilename, chainFilename, didString, verbose)
+				_, err := checkCoseSign1(inputFilename, chainFilename, didString, verbose)
 				if err != nil {
 					logrus.Print("failed check: " + err.Error())
 				}
@@ -164,7 +159,7 @@ func main() {
 
 			err := printCmd.Parse(os.Args[2:])
 			if err == nil {
-				_, err := checkCoseSign1(inputFilename, "", chainFilename, didString, true)
+				_, err := checkCoseSign1(inputFilename, chainFilename, didString, true)
 				if err != nil {
 					logrus.Print("failed print: " + err.Error())
 				}
@@ -181,7 +176,7 @@ func main() {
 
 			err := leafCmd.Parse(os.Args[2:])
 			if err == nil {
-				unpacked, err := checkCoseSign1(inputFilename, "", chainFilename, didString, verbose)
+				unpacked, err := checkCoseSign1(inputFilename, chainFilename, didString, verbose)
 				if err == nil {
 					err = cosesign1.WriteString(outputKeyFilename, unpacked.Pubkey)
 					if err != nil {
@@ -219,7 +214,7 @@ func main() {
 						logrus.Print("cannot specify chain with cose file - it comes from the chain in the file")
 						break
 					}
-					unpacked, err := checkCoseSign1(inputFilename, "", "", "", true)
+					unpacked, err := checkCoseSign1(inputFilename, "", "", true)
 					if err != nil {
 						logrus.Print("error: " + err.Error())
 						break

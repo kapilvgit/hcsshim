@@ -2,7 +2,6 @@ package cosesign1
 
 import (
 	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -71,8 +70,9 @@ type UnpackedCoseSign1 struct {
 // such as the cert pools, stored in some state object. Then the sensible pattern would be to have
 // accessors and member functions such as "verity()". However that was done there could exist state objects
 // for badly formed COSE Sign1 documents and that would complicate the jobs of callers.
-
-func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte) (*UnpackedCoseSign1, error) {
+//
+// raw: an array of bytes comprising the COSE Sign1 document.
+func UnpackAndValidateCOSE1CertChain(raw []byte) (*UnpackedCoseSign1, error) {
 	var msg cose.Sign1Message
 	err := msg.UnmarshalCBOR(raw)
 	if err != nil {
@@ -184,29 +184,8 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte) (*Unp
 
 	// Next check that the signature over the document was made with the private key matching the
 	// public key we extracted from the leaf cert.
-	var keyToCheck any
-	if len(optionalPubKeyPEM) == 0 {
-		keyToCheck = leafPubKey
-	} else {
-		var keyDer *pem.Block
-		keyDer, _ = pem.Decode(optionalPubKeyPEM) // _ is the remaining. We only care about the first key.
-		var keyBytes = keyDer.Bytes
 
-		keyToCheck, err = x509.ParsePKCS1PublicKey(keyBytes)
-		if err == nil {
-			logrus.Debugf("parsed as PKCS1 public key %q\n", keyToCheck)
-		} else {
-			keyToCheck, err = x509.ParsePKIXPublicKey(keyBytes)
-			if err == nil {
-				logrus.Debugf("parsed as PKIX key %q\n", keyToCheck)
-			} else {
-				logrus.Debug("Failed to parse provided public key - Error = " + err.Error())
-				return nil, err
-			}
-		}
-	}
-
-	verifier, err := cose.NewVerifier(algo, keyToCheck)
+	verifier, err := cose.NewVerifier(algo, leafPubKey)
 	if err != nil {
 		logrus.Debugf("cose.NewVerifier failed (algo %d): %s", algo, err.Error())
 		return nil, err
@@ -222,7 +201,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte) (*Unp
 	feed := getStringValue(protected, "feed")
 	contenttype := getStringValue(protected, cose.HeaderLabelContentType)
 
-	var results = UnpackedCoseSign1{
+	return &UnpackedCoseSign1{
 		Pubcert:     leafCertBase64,
 		Feed:        feed,
 		Issuer:      issuer,
@@ -231,7 +210,5 @@ func UnpackAndValidateCOSE1CertChain(raw []byte, optionalPubKeyPEM []byte) (*Unp
 		ContentType: contenttype,
 		Payload:     msg.Payload,
 		CertChain:   chain,
-	}
-
-	return &results, nil
+	}, nil
 }
