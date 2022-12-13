@@ -12,7 +12,7 @@ import (
 )
 
 func checkCoseSign1(inputFilename string, chainFilename string, didString string, verbose bool) (*cosesign1.UnpackedCoseSign1, error) {
-	if verbose == true {
+	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 	coseBlob := cosesign1.ReadBlob(inputFilename)
@@ -57,7 +57,7 @@ func checkCoseSign1(inputFilename string, chainFilename string, didString string
 }
 
 func createCoseSign1(payloadFilename string, issuer string, feed string, contentType string, chainFilename string, keyFilename string, saltType string, algo string, verbose bool) ([]byte, error) {
-	if verbose == true {
+	if verbose {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
 	payloadBlob := cosesign1.ReadBlob(payloadFilename)
