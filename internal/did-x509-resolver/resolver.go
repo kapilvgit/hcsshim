@@ -165,6 +165,14 @@ func OidFromExtKeyUsage(eku x509.ExtKeyUsage) (oid asn1.ObjectIdentifier, ok boo
 	return
 }
 
+// did:x509 examples
+//
+//      did:x509:0:sha256:WE4P5dd8DnLHSkyHaIjhp4udlkF9LqoKwCvu9gl38jk::subject:C:US:ST:California:L:San%20Francisco:O:GitHub%2C%20Inc.
+//      did:x509:0:sha256:I5ni_nuWegx4NiLaeGabiz36bDUhDDiHEFl8HXMA_4o::subject:CN:Test%20Leaf%20%28DO%20NOT%20TRUST%20
+//
+// see https://github.com/microsoft/did-x509/blob/main/specification.md and https://www.w3.org/TR/2022/REC-did-core-20220719/
+
+// check that the did "did" matches the public cert chain "chain"
 func verifyDid(chain []*x509.Certificate, did string) error {
 	var topTokens = strings.Split(did, "::")
 
@@ -174,7 +182,7 @@ func verifyDid(chain []*x509.Certificate, did string) error {
 
 	var pretokens = strings.Split(topTokens[0], ":")
 
-	if len(pretokens) < 3 || pretokens[0] != "did" || pretokens[1] != "x509" {
+	if len(pretokens) < 5 || pretokens[0] != "did" || pretokens[1] != "x509" {
 		return errors.New("unsupported method/prefix")
 	}
 

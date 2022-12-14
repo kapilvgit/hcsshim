@@ -21,7 +21,7 @@ func parsePemChain(chainPem string) ([]*x509.Certificate, error) {
 		if block.Type == "CERTIFICATE" {
 			cert, err := x509.ParseCertificate(block.Bytes)
 			if err != nil {
-				return []*x509.Certificate{}, fmt.Errorf("certificate parser failed: %w", err)
+				return nil, fmt.Errorf("certificate parser failed: %w", err)
 			}
 			chain = append(chain, cert)
 		}
@@ -35,7 +35,7 @@ func MakeDidX509(fingerprintAlgorithm string, fingerprintIndex int, chainPEM str
 		return "", fmt.Errorf("unsupported fingerprint hash algorithm '%s'", fingerprintAlgorithm)
 	}
 
-	if fingerprintIndex == 0 {
+	if fingerprintIndex < 1 {
 		return "", fmt.Errorf("fingerprint index must be >= 1")
 	}
 
@@ -43,6 +43,10 @@ func MakeDidX509(fingerprintAlgorithm string, fingerprintIndex int, chainPEM str
 
 	if err != nil {
 		return "", err
+	}
+
+	if len(chain) < 1 {
+		return "", fmt.Errorf("chain must not be empty")
 	}
 
 	if fingerprintIndex > len(chain)-1 {

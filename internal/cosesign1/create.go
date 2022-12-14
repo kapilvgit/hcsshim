@@ -30,6 +30,14 @@ func pem2der(chainPem []byte) []byte {
 	return nil
 }
 
+// CreateCoseSign1 returns a COSE Sign1 document as an array of bytes.
+//
+//		payloadBlob is the payload to be placed inside the envelope.
+//		issuer is an arbitary string, placed in the protected header along with the other strings. Typically this might be a did:x509 that identifies the party that published the document.
+//	 feed is another abribitary string. Typically it is an identier for the object stored in the document.
+//		contentType is a string to describe the payload content, eg application/rego or application/json
+//	 chainPem is an array of bytes containing the certificate chain. That chain is stored and used by a receiver to validate the signature. The leaf cert must match the private key.
+//	 keyPem is an array of bytes (PEM format) containing the private key used to sign the document.
 func CreateCoseSign1(payloadBlob []byte, issuer string, feed string, contentType string, chainPem []byte, keyPem []byte, saltType string, algo cose.Algorithm) (result []byte, err error) {
 	var signingKey any
 	var keyDer *pem.Block

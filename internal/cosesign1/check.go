@@ -175,6 +175,7 @@ func UnpackAndValidateCOSE1CertChain(raw []byte) (*UnpackedCoseSign1, error) {
 			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 		}
 
+		// consider using verifyCertificateChain from resolver to replace much of this logic.
 		_, err = leafCert.Verify(opts)
 
 		if err != nil {
