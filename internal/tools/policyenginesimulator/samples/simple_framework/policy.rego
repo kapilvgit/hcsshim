@@ -28,6 +28,7 @@ containers := [
         "exec_processes": [],
         "signals": [],
         "allow_elevated": false,
+        "allow_stdio_access": false,
         "working_dir": "/"
     },
     {
@@ -85,6 +86,7 @@ containers := [
         ],
 
         "allow_elevated": true,
+        "allow_stdio_access": false,
         "working_dir": "/"
     },
 ]
