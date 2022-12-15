@@ -167,7 +167,12 @@ can_create_container {
   }
 }
 
-create_container := result_with_init {
+create_container :=  {
+    "metadata": array.concat(result.metadata, [addInit]),
+    "env_list": result.env_list,
+    "allow_stdio_access": result.allow_stdio_access,
+    "allowed": result.allowed    
+  } {
   can_create_container
   result := data.framework.create_container
 
@@ -182,15 +187,7 @@ create_container := result_with_init {
       "key": input.containerID,
       "value": init_containers
   }
-
-  result_with_init := {
-    "metadata": array.concat(result.metadata, [addInit]),
-    "env_list": result.env_list,
-    "allow_stdio_access": result.allow_stdio_access,
-    "allowed": result.allowed    
-  }
 }
-
 
 mount_device := data.framework.mount_device
 unmount_device := data.framework.unmount_device
