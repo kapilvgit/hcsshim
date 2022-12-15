@@ -167,70 +167,30 @@ can_create_container {
   }
 }
 
-create_container := {"metadata": [updateMatches, addStarted, addInit],
-                     "env_list": env_list,
-                     "allow_stdio_access": allow_stdio_access,
-                     "allowed": true} {
-    not data.framework.container_started
+create_container := result_with_init {
+  can_create_container
+  result := data.framework.create_container
 
-    can_create_container
+  init_containers := [ container | 
+      container := data.metadata.matches[input.containerID][_] 
+      container.is_init 
+  ]
+  
+  addInit := {
+      "name": "init",
+      "action": "add",
+      "key": input.containerID,
+      "value": init_containers
+  }
 
-    # narrow the matches based upon command, working directory, and
-    # mount list
-    possible_containers := [container |
-        container := data.metadata.matches[input.containerID][_]
-        data.framework.workingDirectory_ok(container.working_dir)
-        data.framework.command_ok(container.command)
-        data.framework.mountList_ok(container.mounts, container.allow_elevated)
-    ]
-
-    count(possible_containers) > 0
-
-    # check to see if the environment variables match, dropping
-    # them if allowed (and necessary)
-    env_list := data.framework.valid_envs_for_all(possible_containers)
-    containers := [container |
-        container := possible_containers[_]
-        data.framework.envList_ok(container.env_rules, env_list)
-    ]
-
-    count(containers) > 0
-
-    # we can't do narrowing based on allowing stdio access so at this point
-    # every container from the policy that might match this create request
-    # must have the same allow stdio value otherwise, we are in an undecidable
-    # state
-    allow_stdio_access := containers[0].allow_stdio_access
-    every c in containers {
-        c.allow_stdio_access == allow_stdio_access
-    }
-
-    updateMatches := {
-        "name": "matches",
-        "action": "update",
-        "key": input.containerID,
-        "value": containers,
-    }
-
-    addStarted := {
-        "name": "started",
-        "action": "add",
-        "key": input.containerID,
-        "value": true,
-    }
-
-    init_containers := [ container | 
-        container := containers[_] 
-        container.is_init 
-    ]
-    
-    addInit := {
-        "name": "init",
-        "action": "add",
-        "key": input.containerID,
-        "value": init_containers
-    }
+  result_with_init := {
+    "metadata": array.concat(result.metadata, [addInit]),
+    "env_list": result.env_list,
+    "allow_stdio_access": result.allow_stdio_access,
+    "allowed": result.allowed    
+  }
 }
+
 
 mount_device := data.framework.mount_device
 unmount_device := data.framework.unmount_device
