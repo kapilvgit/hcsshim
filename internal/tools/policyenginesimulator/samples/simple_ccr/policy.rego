@@ -135,7 +135,6 @@ is_init_container {
       data.framework.workingDirectory_ok(container.working_dir)
       data.framework.command_ok(container.command)
       data.framework.mountList_ok(container.mounts, container.allow_elevated)
-      # data.framework.layerPaths_ok(container.layers)
       container.is_init
   ]
 
