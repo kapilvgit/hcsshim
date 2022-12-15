@@ -154,8 +154,6 @@ can_start_container {
     container.is_init
   ]
   
-  count(data.metadata.init[_]) == 1
-
   every init_container in init_containers { 
     some started_container in data.metadata.init[_]
     started_container.working_dir == init_container.working_dir
