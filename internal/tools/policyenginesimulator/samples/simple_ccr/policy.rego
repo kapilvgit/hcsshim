@@ -159,7 +159,11 @@ can_create_container {
     started_container.working_dir == init_container.working_dir
     count(started_container.command) == count(init_container.command)
     every i, arg in started_container.command {
-        init_container.command[i] == arg
+      init_container.command[i] == arg
+    }
+    count(started_container.layers) == count(init_container.layers)
+    every i, layer in started_container.layers {
+      init_container.layers[i] == layer
     }
   }
 }
