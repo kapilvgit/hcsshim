@@ -144,11 +144,11 @@ is_init_container {
 
 default can_start_container := false
 
-can_start_container {
+can_create_container {
   is_init_container
 }
 
-can_start_container {
+can_create_container {
   init_containers := [container | 
     container := data.policy.containers[_]
     container.is_init
@@ -158,6 +158,9 @@ can_start_container {
     some started_container in data.metadata.init[_]
     started_container.working_dir == init_container.working_dir
     count(started_container.command) == count(init_container.command)
+    every i, arg in started_container.command {
+        init_container.command[i] == arg
+    }
   }
 }
 
@@ -167,7 +170,7 @@ create_container := {"metadata": [updateMatches, addStarted, addInit],
                      "allowed": true} {
     not data.framework.container_started
 
-    can_start_container
+    can_create_container
 
     # narrow the matches based upon command, working directory, and
     # mount list
