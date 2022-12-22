@@ -161,6 +161,9 @@ create_container := {
   can_create_container
   not input.allow_elevated
   not data.framework.container_started
+
+  # TODO: check that there is a sandboxed overlay mounted for this container
+
   addStarted := {
       "name": "started",
       "action": "add",
@@ -203,6 +206,8 @@ mount_overlay := {"metadata": [addOverlayTarget], "allowed": true} {
   ]
 
   count(containers) == 0
+
+  # TODO: check that the overlay is on top of sandboxed devices 
 
   addOverlayTarget := {
       "name": "overlayTargets",
